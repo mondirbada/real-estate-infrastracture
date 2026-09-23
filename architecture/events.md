@@ -1,292 +1,150 @@
-# Event Architecture
+# Event-Driven Architecture
 
-Questo documento descrive l'architettura event-driven della piattaforma e definisce come i componenti comunicano attraverso eventi e messaggi asincroni.
+## Overview
 
-L'obiettivo è ridurre l'accoppiamento tra i servizi, separare le operazioni sincrone da quelle asincrone e rendere il sistema più resiliente e scalabile.
+La piattaforma utilizza un'architettura **Event-Driven** per disaccoppiare i componenti applicativi e gestire in modo asincrono le operazioni che non richiedono una risposta immediata al client.
 
----
+L'obiettivo è separare:
 
-## Principi
+* produzione degli eventi;
+* routing degli eventi;
+* elaborazione asincrona;
+* orchestrazione dei workflow;
+* gestione degli errori;
+* retry e recovery.
 
-L'architettura degli eventi segue questi principi:
+Amazon EventBridge costituisce il principale event routing layer della piattaforma.
 
-* i servizi pubblicano eventi relativi ai cambiamenti di stato rilevanti;
-* i producer non devono conoscere direttamente tutti i consumer;
-* EventBridge viene utilizzato come event bus;
-* SQS viene utilizzato quando è necessaria una coda persistente per l'elaborazione asincrona;
-* i consumer devono essere idempotenti;
-* gli errori temporanei devono poter essere ritentati;
-* i messaggi che non possono essere elaborati devono essere isolati tramite Dead Letter Queue;
-* gli eventi devono contenere informazioni sufficienti per essere elaborati dal consumer;
-* gli eventi non devono contenere dati sensibili non necessari;
-* i workflow complessi devono essere orchestrati tramite Step Functions.
+Amazon SQS viene utilizzato per creare code affidabili tra producer e consumer.
 
----
+AWS Step Functions viene utilizzato per orchestrare workflow composti da più passaggi.
 
-# Modello generale
+## Architecture Diagram
 
-L'architettura event-driven può essere rappresentata come:
+![Event-Driven Architecture](./diagrams/events.jpeg)
 
-```mermaid
-flowchart LR
+## Event-Driven Model
 
-    Producer[Application Service]
+Il modello generale è:
 
-    Bus[EventBridge]
-
-    Lambda[Lambda Consumer]
-    Queue[SQS Queue]
-    Worker[Worker Lambda]
-    Workflow[Step Functions]
-
-    Producer -->|Event| Bus
-
-    Bus --> Lambda
-    Bus --> Queue
-    Bus --> Workflow
-
-    Queue --> Worker
+```text
+Producer
+   │
+   ▼
+EventBridge
+   │
+   ├───────────────┐
+   │               │
+   ▼               ▼
+ SQS          Step Functions
+   │               │
+   ▼               ▼
+Lambda          Workflow
+Worker             │
+   │               ├── Lambda
+   │               └── SES
+   │
+   ▼
+Application Services
 ```
 
-Il producer pubblica un evento senza dover conoscere direttamente i consumer.
+Il sistema distingue quindi tra **event routing**, **message processing** e **workflow orchestration**.
 
-EventBridge decide quali destinazioni devono ricevere l'evento sulla base delle regole configurate.
+## Event Producers
 
----
+Gli eventi possono essere prodotti da diversi componenti della piattaforma.
 
-# Event Producer
+I principali producer sono:
 
-Un **producer** è un componente che genera un evento in seguito a un'operazione significativa.
+* AWS Lambda;
+* application services;
+* processi asincroni;
+* Amazon S3;
+* altri servizi AWS compatibili con EventBridge.
+
+Gli eventi applicativi devono rappresentare cambiamenti o fatti significativi del dominio.
 
 Esempi:
 
-* Users Lambda;
-* Properties Lambda;
-* CRM Lambda;
-* worker asincroni;
-* altri servizi applicativi.
+* `UserCreated`;
+* `PropertyCreated`;
+* `PropertyUpdated`;
+* `PropertyPublished`;
+* `PropertyDeleted`;
+* `MediaUploaded`.
+
+## Domain Events
+
+Gli eventi applicativi devono essere definiti in modo esplicito e avere un significato indipendente dal consumer.
+
+Un evento dovrebbe descrivere **qualcosa che è accaduto**, anziché rappresentare un comando.
 
 Esempio:
 
 ```text
-Properties Lambda
-       │
-       │ PropertyCreated
-       ▼
-   EventBridge
-```
-
-Il producer è responsabile di pubblicare un evento che descrive ciò che è avvenuto.
-
-Non deve essere responsabile di conoscere o gestire direttamente tutti i consumer.
-
----
-
-# Event Consumer
-
-Un **consumer** riceve un evento e reagisce eseguendo una determinata operazione.
-
-Esempi:
-
-```text
-PropertyCreated
-      │
-      ├──► OpenSearch Indexer
-      ├──► Notification Service
-      └──► Analytics
-```
-
-L'aggiunta di un nuovo consumer non dovrebbe richiedere modifiche al producer.
-
-Questo è uno dei principali vantaggi dell'utilizzo di EventBridge.
-
----
-
-# Amazon EventBridge
-
-EventBridge rappresenta il principale **event bus** della piattaforma.
-
-Il suo compito è ricevere gli eventi e distribuirli ai consumer appropriati.
-
-```text
-                   ┌──► Lambda
-                   │
-Producer ──► EventBridge ──► SQS
-                   │
-                   └──► Step Functions
-```
-
-Il routing degli eventi viene gestito attraverso regole basate sul contenuto dell'evento.
-
----
-
-# Event Bus
-
-La piattaforma utilizzerà un event bus dedicato all'applicazione.
-
-A livello concettuale:
-
-```text
-Application
-     │
-     ▼
-Application Event Bus
-     │
-     ├──► Property events
-     ├──► CRM events
-     ├──► User events
-     └──► Media events
-```
-
-La struttura definitiva degli event bus e l'eventuale separazione tra domini verranno definite durante l'implementazione.
-
----
-
-# Event Naming
-
-Gli eventi devono utilizzare una nomenclatura coerente e prevedibile.
-
-Esempi:
-
-```text
-PropertyCreated
-PropertyUpdated
-PropertyPublished
-PropertyDeleted
-
-LeadCreated
-LeadUpdated
-LeadDeleted
-
-MediaUploaded
-MediaDeleted
-
-UserCreated
-UserUpdated
-```
-
-Il nome deve rappresentare un fatto che è già avvenuto.
-
-È preferibile quindi utilizzare:
-
-```text
 PropertyCreated
 ```
 
-invece di:
+è un evento.
 
 ```text
 CreateProperty
 ```
 
-Il primo rappresenta un **evento**, mentre il secondo rappresenta un **comando**.
+rappresenta invece un comando e non deve essere trattato come un domain event.
 
----
+## Event Structure
 
-# Event Envelope
+Gli eventi dovrebbero utilizzare una struttura consistente.
 
-Gli eventi dovrebbero utilizzare una struttura comune.
-
-Esempio concettuale:
+Un esempio concettuale è:
 
 ```json
 {
-  "id": "event-id",
-  "type": "PropertyCreated",
-  "source": "properties-service",
-  "time": "2026-09-23T10:00:00Z",
-  "version": "1",
+  "eventType": "PropertyCreated",
+  "eventId": "uuid",
+  "occurredAt": "timestamp",
+  "source": "property-service",
+  "version": 1,
   "data": {
-    "propertyId": "property-id"
+    "propertyId": "uuid"
   }
 }
 ```
 
-I campi principali sono:
+La struttura definitiva degli eventi verrà definita durante l'implementazione.
 
-| Campo     | Descrizione                        |
-| --------- | ---------------------------------- |
-| `id`      | Identificativo univoco dell'evento |
-| `type`    | Tipo di evento                     |
-| `source`  | Servizio che ha generato l'evento  |
-| `time`    | Data e ora dell'evento             |
-| `version` | Versione dello schema              |
-| `data`    | Payload specifico dell'evento      |
+Gli eventi dovrebbero contenere esclusivamente i dati necessari ai consumer e non dovrebbero includere informazioni sensibili quando non necessarie.
 
-La struttura definitiva dell'event envelope verrà formalizzata durante l'implementazione.
+## Amazon EventBridge
 
----
+Amazon EventBridge costituisce il punto centrale di routing degli eventi applicativi.
 
-# Event ID
+Il suo ruolo principale è:
 
-Ogni evento deve avere un identificativo univoco.
+* ricevere eventi;
+* applicare event rules;
+* filtrare gli eventi;
+* inoltrare gli eventi verso i target appropriati;
+* disaccoppiare producer e consumer.
 
-L'ID permette di:
-
-* identificare un evento;
-* tracciare un evento nei log;
-* correlare operazioni;
-* facilitare il debugging;
-* supportare meccanismi di idempotenza.
-
-Esempio:
+Concettualmente:
 
 ```text
-eventId = 8b7f...
+                    ┌── SQS
+                    │
+Producer ──► EventBridge ──► Step Functions
+                    │
+                    └── Lambda / other targets
 ```
 
-Il consumer può utilizzare l'ID dell'evento per riconoscere eventuali elaborazioni duplicate.
+I producer non devono conoscere direttamente tutti i consumer degli eventi.
 
----
+Questo permette di aggiungere nuovi consumer senza modificare necessariamente il producer.
 
-# Versioning
+## Event Rules
 
-Gli eventi devono essere versionabili.
-
-Una modifica incompatibile allo schema non dovrebbe rompere consumer esistenti.
-
-Esempio:
-
-```text
-PropertyCreated v1
-PropertyCreated v2
-```
-
-La strategia di versioning definitiva verrà definita quando saranno stabiliti i contratti degli eventi.
-
----
-
-# Event Payload
-
-Gli eventi devono contenere solamente le informazioni necessarie al consumer.
-
-Esempio:
-
-```json
-{
-  "type": "PropertyCreated",
-  "data": {
-    "propertyId": "12345"
-  }
-}
-```
-
-Non è necessario inserire nell'evento l'intero record dell'immobile se il consumer può recuperare i dati necessari tramite il relativo identificativo.
-
-Questo riduce:
-
-* dimensione dei messaggi;
-* accoppiamento tra servizi;
-* rischio di propagare dati non necessari;
-* problemi di versionamento.
-
-Quando necessario, il consumer può recuperare i dati aggiornati dalla source of truth.
-
----
-
-# EventBridge Rules
-
-Le regole di EventBridge determinano quali consumer devono ricevere un determinato evento.
+Le EventBridge Rules determinano quali eventi devono essere inoltrati a determinati target.
 
 Esempio:
 
@@ -296,101 +154,429 @@ PropertyCreated
       ▼
 EventBridge Rule
       │
-      ├──► OpenSearch Queue
-      │
-      ├──► Notification Lambda
-      │
-      └──► Analytics
+      ▼
+SQS
 ```
 
-Il producer non deve conoscere queste destinazioni.
+Un'altra regola potrebbe essere:
 
----
+```text
+PropertyPublished
+      │
+      ▼
+EventBridge Rule
+      │
+      ▼
+Step Functions
+```
 
-# SQS
+Le regole devono essere specifiche e mantenere una responsabilità chiara.
 
-SQS viene utilizzato quando il consumer deve elaborare gli eventi in maniera asincrona e controllata.
+## Amazon SQS
 
-Un flusso tipico è:
+Amazon SQS viene utilizzato per le elaborazioni asincrone che richiedono:
+
+* buffering;
+* retry;
+* disaccoppiamento;
+* controllo della velocità di elaborazione;
+* gestione dei picchi di traffico.
+
+Un consumer Lambda può elaborare i messaggi presenti nella coda:
 
 ```text
 EventBridge
      │
      ▼
-SQS
+    SQS
      │
      ▼
-Worker Lambda
+Lambda Worker
 ```
 
-SQS fornisce un livello di disaccoppiamento tra la pubblicazione dell'evento e la sua elaborazione.
+Il producer non deve attendere il completamento dell'elaborazione del consumer.
 
----
+## Queue Isolation
 
-# Quando utilizzare SQS
+Quando necessario, ogni tipologia di workload può avere una coda dedicata.
 
-SQS è particolarmente utile quando:
-
-* l'elaborazione può essere ritardata;
-* il consumer può essere temporaneamente indisponibile;
-* è necessario gestire retry;
-* possono verificarsi picchi di traffico;
-* l'elaborazione può essere scalata indipendentemente dal producer.
-
-Esempio:
+Esempi:
 
 ```text
-PropertyCreated
+Property Events
       │
       ▼
-EventBridge
-      │
-      ▼
-SQS
+Property Index Queue
       │
       ▼
 OpenSearch Worker
 ```
 
----
-
-# Dead Letter Queue
-
-Le code SQS che gestiscono elaborazioni importanti dovrebbero prevedere una **Dead Letter Queue (DLQ)**.
-
-La DLQ contiene i messaggi che non sono stati elaborati correttamente dopo il numero massimo di tentativi configurato.
-
 ```text
-                ┌──────────────┐
-                │    SQS       │
-                └──────┬───────┘
-                       │
-                  retry attempts
-                       │
-              ┌────────┴────────┐
-              │                 │
-           success             failure
-              │                 │
-              ▼                 ▼
-           Worker              DLQ
+Notification Events
+      │
+      ▼
+Notification Queue
+      │
+      ▼
+Notification Worker
 ```
 
-La DLQ permette di:
+Questo permette di isolare workload differenti e di gestire separatamente scaling, retry e failure handling.
 
-* evitare retry infiniti;
-* isolare i messaggi problematici;
-* analizzare gli errori;
-* effettuare eventualmente un replay controllato.
+## Dead-Letter Queues
 
----
+Le code SQS dovrebbero utilizzare una **Dead-Letter Queue (DLQ)** per i messaggi che non possono essere elaborati correttamente dopo un numero configurato di tentativi.
 
-# Retry
+Il flusso è:
 
-I consumer devono essere progettati per gestire errori temporanei.
+```text
+EventBridge
+    │
+    ▼
+Main Queue
+    │
+    ▼
+Lambda Worker
+    │
+    ├── success ──► processed
+    │
+    └── failure
+          │
+          ▼
+        retry
+          │
+          ▼
+         DLQ
+```
+
+La DLQ consente di isolare i messaggi problematici senza bloccare indefinitamente la coda principale.
+
+I messaggi presenti nella DLQ devono essere monitorati e analizzati.
+
+## Retry Strategy
+
+I retry devono essere utilizzati per gestire errori temporanei.
 
 Esempi:
 
+* temporary network failures;
+* service throttling;
+* transient database errors;
+* temporary dependency failures.
+
+Gli errori permanenti non devono invece generare retry infiniti.
+
+La strategia definitiva dovrà definire:
+
+* numero massimo di retry;
+* visibility timeout;
+* backoff;
+* DLQ;
+* alerting;
+* modalità di replay.
+
+## Idempotency
+
+I consumer devono essere progettati tenendo conto della possibilità che uno stesso evento venga elaborato più di una volta.
+
+Un consumer dovrebbe quindi essere **idempotent** quando possibile.
+
+Esempio:
+
+```text
+PropertyUpdated
+      │
+      ▼
+Search Worker
+      │
+      ▼
+OpenSearch
+```
+
+Se lo stesso evento viene ricevuto nuovamente, il worker deve evitare di produrre uno stato incorretto o duplicato.
+
+La strategia specifica di idempotency verrà definita a livello applicativo.
+
+## AWS Step Functions
+
+AWS Step Functions viene utilizzato per workflow che richiedono più passaggi e una gestione esplicita dello stato.
+
+È particolarmente adatto quando un processo comprende:
+
+* più Lambda;
+* condizioni;
+* retry;
 * timeout;
-* errori temporanei di rete;
-* throttling;
-* indispon
+* branching;
+* attese;
+* gestione degli errori;
+* stato del workflow.
+
+Esempio:
+
+```text
+Event
+ │
+ ▼
+Step Functions
+ │
+ ├── Validate
+ │
+ ├── Process
+ │
+ ├── Persist
+ │
+ └── Notify
+```
+
+Step Functions non sostituisce SQS.
+
+I due servizi hanno responsabilità differenti:
+
+* **SQS** → message queue e decoupling;
+* **Step Functions** → workflow orchestration.
+
+## Notifications
+
+Gli eventi possono attivare processi di notifica.
+
+Un esempio è:
+
+```text
+PropertyPublished
+       │
+       ▼
+EventBridge
+       │
+       ▼
+Step Functions
+       │
+       ▼
+Lambda
+       │
+       ▼
+Amazon SES
+```
+
+In questo modello SES viene utilizzato come servizio di delivery email, mentre la logica applicativa e l'orchestrazione rimangono nei componenti precedenti.
+
+## Search Indexing
+
+L'aggiornamento degli indici OpenSearch può essere gestito tramite eventi.
+
+Esempio:
+
+```text
+PropertyUpdated
+      │
+      ▼
+EventBridge
+      │
+      ▼
+SQS
+      │
+      ▼
+Lambda Worker
+      │
+      ▼
+OpenSearch
+```
+
+Questo permette di separare il workload transazionale dal workload di indexing.
+
+Aurora PostgreSQL rimane la source of truth.
+
+## Media Processing
+
+Il caricamento di un file su Amazon S3 può generare un evento che avvia un processo asincrono.
+
+Esempio:
+
+```text
+User
+ │
+ ▼
+S3
+ │
+ ▼
+MediaUploaded
+ │
+ ▼
+EventBridge
+ │
+ ▼
+Processing Queue
+ │
+ ▼
+Lambda Worker
+```
+
+Il worker può eseguire operazioni come:
+
+* validazione del file;
+* aggiornamento dei metadata;
+* elaborazioni successive;
+* aggiornamento dello stato applicativo.
+
+Le specifiche elaborazioni verranno definite nella fase applicativa.
+
+## Event Ordering
+
+Gli eventi non devono assumere implicitamente un ordine globale di elaborazione.
+
+Quando l'ordine è rilevante per un determinato workload, dovrà essere introdotto un meccanismo esplicito per gestirlo.
+
+Le esigenze di ordering dovranno essere valutate caso per caso.
+
+## Event Versioning
+
+Gli eventi devono essere versionabili.
+
+Un campo di versione consente di evolvere gradualmente il formato degli eventi.
+
+Esempio:
+
+```json
+{
+  "eventType": "PropertyCreated",
+  "version": 1
+}
+```
+
+Modifiche incompatibili al contratto di un evento dovranno introdurre una nuova versione.
+
+## Event Contracts
+
+I consumer devono dipendere da contratti di evento espliciti.
+
+La documentazione degli eventi dovrebbe definire almeno:
+
+* event type;
+* version;
+* producer;
+* payload;
+* required fields;
+* optional fields;
+* expected consumer behavior;
+* error handling.
+
+La definizione formale dei contratti verrà introdotta durante la fase di implementazione.
+
+## Observability
+
+L'architettura Event-Driven deve essere osservabile end-to-end.
+
+Devono essere monitorati almeno:
+
+* numero di eventi pubblicati;
+* numero di messaggi nelle code;
+* processing latency;
+* error rate;
+* retry count;
+* DLQ messages;
+* workflow failures;
+* Lambda errors;
+* EventBridge delivery failures.
+
+Amazon CloudWatch costituisce il principale sistema di monitoring.
+
+AWS X-Ray può essere utilizzato per il tracing delle richieste e dei processi supportati.
+
+## Failure Handling
+
+Gli errori devono essere classificati in:
+
+### Transient Errors
+
+Errori temporanei che possono essere risolti tramite retry.
+
+### Permanent Errors
+
+Errori che richiedono intervento applicativo o dati corretti e che non devono essere ritentati indefinitamente.
+
+### Poison Messages
+
+Messaggi che continuano a fallire durante l'elaborazione.
+
+Questi devono essere indirizzati verso una DLQ dopo il numero massimo di retry configurato.
+
+## Event Security
+
+Gli eventi devono essere protetti tramite:
+
+* IAM permissions;
+* EventBridge resource policies quando necessarie;
+* SQS queue policies;
+* encryption;
+* least privilege;
+* logging e monitoring.
+
+I producer devono poter pubblicare solo gli eventi necessari.
+
+I consumer devono poter leggere esclusivamente le code necessarie al proprio workload.
+
+## Event Flow Example
+
+Un esempio completo di aggiornamento di un immobile è:
+
+```text
+User
+ │
+ ▼
+API Gateway
+ │
+ ▼
+Lambda
+ │
+ ├── Update Property
+ │        │
+ │        ▼
+ │     Aurora
+ │
+ └── Publish PropertyUpdated
+              │
+              ▼
+         EventBridge
+              │
+              ▼
+             SQS
+              │
+              ▼
+        Lambda Worker
+              │
+              ▼
+         OpenSearch
+```
+
+Il client riceve la risposta dell'operazione transazionale senza dover attendere il completamento dell'indicizzazione.
+
+## Open Decisions
+
+Le principali decisioni ancora da definire sono:
+
+* naming convention degli eventi;
+* event schema definitivo;
+* event versioning strategy;
+* EventBridge Event Bus strategy;
+* numero e responsabilità delle SQS queues;
+* DLQ strategy;
+* retry policies;
+* visibility timeout;
+* idempotency strategy;
+* ordering requirements;
+* replay strategy;
+* retention;
+* monitoring e alerting;
+* workflow Step Functions;
+* eventuale schema registry;
+* gestione degli eventi tra ambienti.
+
+## Related Documentation
+
+* [Architecture](./README.md)
+* [High-Level Architecture](./high-level.md)
+* [AWS Services](./aws-services.md)
+* [Networking](./networking.md)
+* [Data Architecture](./data.md)
+* [Security Architecture](./security.md)
