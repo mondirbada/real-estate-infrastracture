@@ -1,71 +1,64 @@
-flowchart TB
+flowchart LR
 
 ```
 User["User"]
 
-subgraph Edge["Edge & Security"]
+subgraph Edge["Edge"]
     CloudFront["CloudFront"]
     WAF["AWS WAF"]
 end
 
 subgraph Identity["Identity"]
-    Cognito["Amazon Cognito"]
+    Cognito["Cognito"]
 end
 
-subgraph API["API Layer"]
+subgraph API["API"]
     APIGateway["API Gateway"]
 end
 
-subgraph Compute["Serverless Compute"]
-    LambdaUsers["Lambda - Users"]
-    LambdaProperties["Lambda - Properties"]
-    LambdaCRM["Lambda - CRM"]
+subgraph Compute["Compute"]
+    Users["Lambda Users"]
+    Properties["Lambda Properties"]
+    CRM["Lambda CRM"]
 end
 
-subgraph Data["Data Layer"]
+subgraph Data["Data"]
     RDSProxy["RDS Proxy"]
     Aurora["Aurora PostgreSQL"]
-    S3["Amazon S3"]
+    S3["S3"]
     OpenSearch["OpenSearch"]
 end
 
-subgraph Messaging["Messaging & Events"]
+subgraph Async["Async Processing"]
     EventBridge["EventBridge"]
     SQS["SQS"]
     StepFunctions["Step Functions"]
 end
 
-subgraph Platform["Platform Services"]
-    SES["Amazon SES"]
+subgraph Platform["Platform"]
+    SES["SES"]
     Secrets["Secrets Manager"]
-end
-
-subgraph Observability["Observability"]
-    CloudWatch["CloudWatch"]
-    XRay["X-Ray"]
-    CloudTrail["CloudTrail"]
 end
 
 User --> CloudFront
 CloudFront --> WAF
-
-User --> Cognito
-Cognito --> APIGateway
-
 WAF --> APIGateway
 
-APIGateway --> LambdaUsers
-APIGateway --> LambdaProperties
-APIGateway --> LambdaCRM
+User -. "authentication" .-> Cognito
+Cognito -. "token" .-> APIGateway
 
-LambdaUsers --> RDSProxy
-LambdaProperties --> RDSProxy
-LambdaCRM --> RDSProxy
+APIGateway --> Users
+APIGateway --> Properties
+APIGateway --> CRM
+
+Users --> RDSProxy
+Properties --> RDSProxy
+CRM --> RDSProxy
 
 RDSProxy --> Aurora
 
-LambdaProperties --> S3
-LambdaProperties --> EventBridge
+Properties --> S3
+Properties --> EventBridge
 
 EventBridge --> SQS
 EventBridge --> StepFunctions
@@ -73,20 +66,7 @@ EventBridge --> StepFunctions
 SQS --> OpenSearch
 StepFunctions --> SES
 
-LambdaUsers --> Secrets
-LambdaProperties --> Secrets
-LambdaCRM --> Secrets
-
-LambdaUsers --> CloudWatch
-LambdaProperties --> CloudWatch
-LambdaCRM --> CloudWatch
-
-LambdaUsers --> XRay
-LambdaProperties --> XRay
-LambdaCRM --> XRay
-
-APIGateway --> CloudWatch
-WAF --> CloudWatch
-
-CloudTrail --> CloudWatch
+Users -.-> Secrets
+Properties -.-> Secrets
+CRM -.-> Secrets
 ```
