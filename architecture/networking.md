@@ -1,404 +1,284 @@
 # Networking
 
-Questo documento descrive l'architettura di rete della piattaforma e i principali confini di comunicazione tra i componenti.
+## Overview
 
-L'obiettivo è definire:
+La piattaforma utilizza una AWS VPC dedicata per isolare le risorse che richiedono controllo sul traffico di rete.
 
-* struttura della VPC;
-* suddivisione delle subnet;
-* accesso a Internet;
-* comunicazione tra i servizi;
-* isolamento dei componenti;
-* principali controlli di rete.
+L'architettura di networking segue questi principi:
 
-Le configurazioni specifiche, come CIDR, numero di subnet e regole dettagliate dei Security Group, verranno definite durante l'implementazione dell'infrastruttura.
+* minimizzare la superficie pubblica;
+* mantenere le risorse sensibili all'interno di Private Subnets;
+* separare i componenti in base alla loro esposizione e responsabilità;
+* controllare il traffico tramite Security Groups e Network ACLs;
+* utilizzare AWS managed services quando possibile;
+* evitare l'accesso diretto a database e risorse interne da Internet.
 
----
+## Architecture Diagram
 
-## Principi di networking
-
-L'architettura di rete segue alcuni principi fondamentali:
-
-* minimizzare l'esposizione pubblica delle risorse;
-* mantenere i componenti infrastrutturali sensibili all'interno di subnet private;
-* separare i componenti in base alla loro responsabilità;
-* utilizzare Security Group come principale meccanismo di controllo del traffico;
-* evitare accessi diretti a database e componenti interni da Internet;
-* utilizzare endpoint privati AWS quando appropriato;
-* mantenere il traffico tra i componenti il più possibile controllato e prevedibile.
-
----
+![Network Architecture](./diagrams/network.jpeg)
 
 ## VPC
 
-L'infrastruttura applicativa verrà ospitata all'interno di una **Amazon VPC** dedicata.
+La VPC costituisce il principale boundary di rete dell'infrastruttura.
 
-La VPC rappresenta il principale confine di rete dell'infrastruttura AWS.
+La VPC deve essere configurata con un CIDR range dedicato e suddivisa in più Availability Zones per garantire resilienza e disponibilità.
 
-Una rappresentazione concettuale è:
+Una configurazione iniziale può prevedere almeno due Availability Zones.
 
-```mermaid
-flowchart TB
-
-    Internet((Internet))
-
-    subgraph AWS["AWS Account"]
-        subgraph VPC["Amazon VPC"]
-
-            IGW[Internet Gateway]
-
-            subgraph Public["Public Subnets"]
-                PublicResources[Public-facing resources]
-                NAT[NAT Gateway]
-            end
-
-            subgraph Private["Private Subnets"]
-                Lambda[Application workloads]
-                Proxy[RDS Proxy]
-                Aurora[(Aurora PostgreSQL)]
-            end
-
-            IGW --> PublicResources
-            IGW --> NAT
-            PublicResources --> Lambda
-            Lambda --> Proxy
-            Proxy --> Aurora
-            Lambda --> NAT
-        end
-    end
-
-    Internet --> IGW
+```text id="5kqubg"
+AWS Region
+│
+└── VPC
+    │
+    ├── Availability Zone A
+    │   ├── Public Subnet
+    │   └── Private Subnet
+    │
+    └── Availability Zone B
+        ├── Public Subnet
+        └── Private Subnet
 ```
 
-Il diagramma rappresenta il modello concettuale della rete e non costituisce ancora la configurazione definitiva.
+Il CIDR definitivo della VPC e la suddivisione delle subnet saranno definiti durante l'implementazione Terraform.
 
----
+## Public Subnets
 
-## Subnet
+Le Public Subnets sono subnet associate a un route table che consente il routing verso un Internet Gateway.
 
-La VPC sarà organizzata utilizzando subnet con differenti livelli di esposizione.
+Devono contenere esclusivamente risorse che necessitano realmente di accesso o routing pubblico.
 
-### Public Subnet
+L'architettura applicativa deve comunque minimizzare il numero di risorse direttamente esposte.
 
-Le subnet pubbliche sono associate a una route table che permette l'accesso tramite Internet Gateway.
+## Private Subnets
 
-Il loro utilizzo deve essere limitato ai componenti che necessitano effettivamente di esposizione o accesso diretto a Internet.
+Le Private Subnets ospitano le risorse che non devono essere direttamente raggiungibili da Internet.
 
-Un esempio di componente che può essere collocato in questo livello è un NAT Gateway.
+Tra queste possono rientrare:
 
----
+* Aurora PostgreSQL;
+* RDS Proxy;
+* OpenSearch;
+* Lambda functions configurate all'interno della VPC, quando necessario;
+* altri componenti backend che richiedono network isolation.
 
-### Private Subnet
-
-Le subnet private sono utilizzate per i componenti che non devono essere direttamente raggiungibili da Internet.
-
-In particolare:
-
-* database;
-* proxy;
-* workload applicativi che richiedono networking VPC;
-* altri componenti infrastrutturali interni.
-
-Il database Aurora deve essere raggiungibile solamente dai componenti autorizzati all'accesso al database.
-
----
-
-## Availability Zone
-
-La VPC sarà distribuita su più **Availability Zone** all'interno della regione AWS scelta.
-
-L'obiettivo è evitare che un singolo failure domain rappresenti un punto singolo di guasto per i componenti che supportano la distribuzione multi-AZ.
-
-A livello concettuale:
-
-```text
-                    VPC
-                     │
-          ┌──────────┴──────────┐
-          │                     │
-          ▼                     ▼
-     Availability Zone A   Availability Zone B
-          │                     │
-     Private Subnet         Private Subnet
-          │                     │
-          └──────────┬──────────┘
-                     │
-                Aurora / DB
-```
-
-Il numero definitivo di Availability Zone e subnet verrà definito durante la progettazione Terraform.
-
----
+Il database non deve avere un percorso diretto verso Internet.
 
 ## Internet Gateway
 
-L'**Internet Gateway** fornisce il collegamento tra la VPC e Internet per le risorse che dispongono di un percorso di rete appropriato.
+L'Internet Gateway fornisce connettività tra la VPC e Internet per le risorse che utilizzano le Public Subnets.
 
-L'accesso Internet deve essere limitato alle risorse che ne hanno effettivamente bisogno.
-
-Il database non deve essere direttamente esposto tramite Internet Gateway.
-
----
+Il traffico pubblico deve essere limitato alle risorse che ne hanno effettivamente bisogno.
 
 ## NAT Gateway
 
-Il **NAT Gateway** permette alle risorse presenti nelle subnet private di effettuare connessioni in uscita verso Internet senza renderle direttamente raggiungibili dall'esterno.
+Un NAT Gateway può essere utilizzato per consentire alle risorse nelle Private Subnets di effettuare connessioni in uscita verso Internet senza renderle direttamente raggiungibili dall'esterno.
 
-Un caso d'uso tipico è:
+Il suo utilizzo deve essere valutato in base alle effettive necessità delle Lambda e degli altri componenti privati.
 
-```text
-Private Subnet
-      │
-      ▼
-   Lambda / Workload
-      │
-      ▼
-  NAT Gateway
-      │
-      ▼
-   Internet
-```
+In particolare, prima di introdurre NAT Gateway è opportuno valutare l'utilizzo di VPC Endpoints per i servizi AWS supportati.
 
-Il NAT Gateway non deve essere considerato un meccanismo per consentire connessioni in ingresso verso le risorse private.
+## VPC Endpoints
 
-La quantità e il posizionamento dei NAT Gateway saranno definiti in base ai requisiti di disponibilità, sicurezza e costo.
+I VPC Endpoints possono consentire alle risorse private di accedere a servizi AWS senza instradare il traffico attraverso Internet.
 
----
-
-## Accesso ai servizi AWS
-
-Non tutti i componenti devono raggiungere i servizi AWS passando attraverso Internet.
-
-Quando appropriato, verranno utilizzati **VPC Endpoint** per permettere l'accesso privato ai servizi AWS supportati.
-
-Esempi potenziali:
+Possono essere valutati, ad esempio, per:
 
 * Amazon S3;
 * Amazon SQS;
 * Amazon EventBridge;
 * AWS Secrets Manager;
-* Amazon CloudWatch.
+* Amazon CloudWatch;
+* altri servizi AWS compatibili.
 
-La scelta degli endpoint verrà definita durante l'implementazione in base ai requisiti effettivi dei componenti.
+L'utilizzo degli endpoint verrà definito durante la fase di implementazione e ottimizzazione dell'infrastruttura.
 
----
+## Routing
 
-## Security Group
+Le route tables definiscono il percorso del traffico all'interno della VPC.
 
-I **Security Group** rappresentano il principale meccanismo di controllo del traffico tra le risorse all'interno della VPC.
+Un modello concettuale è:
 
-Le regole devono seguire il principio del **least privilege**.
-
-Ad esempio, il database dovrebbe accettare connessioni solamente dal componente autorizzato ad accedervi:
-
-```text
-Lambda
-   │
-   │ TCP / PostgreSQL
-   ▼
-RDS Proxy
-   │
-   │ TCP / PostgreSQL
-   ▼
-Aurora PostgreSQL
-```
-
-Non deve essere presente un accesso diretto da Internet ad Aurora.
-
----
-
-## Database networking
-
-Aurora PostgreSQL sarà posizionato all'interno di subnet private.
-
-L'accesso al database seguirà una catena controllata:
-
-```text
-API Gateway
-     │
-     ▼
-Lambda
-     │
-     ▼
-RDS Proxy
-     │
-     ▼
-Aurora PostgreSQL
-```
-
-Il database non sarà esposto direttamente come endpoint pubblico.
-
-RDS Proxy fungerà da punto di accesso al database per i workload che necessitano di connessioni relazionali.
-
----
-
-## Lambda e VPC
-
-Non tutte le Lambda devono necessariamente essere inserite nella VPC.
-
-Una funzione Lambda dovrebbe essere associata alla VPC quando deve raggiungere risorse private che richiedono networking VPC.
-
-Esempi:
-
-* Aurora;
-* RDS Proxy;
-* risorse private interne.
-
-Le Lambda che utilizzano esclusivamente servizi AWS accessibili tramite API possono essere mantenute fuori dalla VPC quando questo semplifica l'architettura senza introdurre requisiti contrari.
-
-La decisione verrà presa funzione per funzione in fase di implementazione.
-
----
-
-## Flusso di rete principale
-
-Il percorso principale per una richiesta applicativa può essere rappresentato come:
-
-```text
-                        Internet
-                           │
-                           ▼
-                      CloudFront
-                           │
-                           ▼
-                       Next.js
-                           │
-                           ▼
-                     API Gateway
-                           │
-                           ▼
-                        Lambda
-                           │
-                           ▼
-                      RDS Proxy
-                           │
-                           ▼
-                   Aurora PostgreSQL
-```
-
-Per operazioni asincrone:
-
-```text
-Lambda
-  │
-  ▼
-EventBridge
-  │
-  ├──────────────► Lambda
-  │
-  ├──────────────► SQS
-  │                  │
-  │                  ▼
-  │              Worker Lambda
-  │
-  └──────────────► Step Functions
-```
-
----
-
-## Flusso verso servizi esterni
-
-Quando un workload privato deve comunicare con un servizio esterno tramite Internet, il traffico può seguire il seguente percorso:
-
-```text
-Private Subnet
-      │
-      ▼
-NAT Gateway
+```text id="x8z5rq"
+Public Subnet
       │
       ▼
 Internet Gateway
       │
       ▼
-Internet
+  Internet
+
+
+Private Subnet
+      │
+      ▼
+ NAT Gateway
+      │
+      ▼
+  Internet
 ```
 
-L'accesso in uscita deve essere limitato alle esigenze effettive del workload.
+Per i servizi AWS accessibili tramite VPC Endpoints:
 
----
+```text id="y6n1sv"
+Private Subnet
+      │
+      ▼
+VPC Endpoint
+      │
+      ▼
+AWS Service
+```
+
+## Security Groups
+
+I Security Groups costituiscono il principale livello di controllo del traffico verso le risorse AWS che li supportano.
+
+Le regole devono essere definite seguendo il principio di Least Privilege.
+
+Esempio concettuale:
+
+```text id="c6b1be"
+Lambda
+  │
+  │ PostgreSQL
+  ▼
+RDS Proxy
+  │
+  │ PostgreSQL
+  ▼
+Aurora PostgreSQL
+```
+
+Aurora dovrebbe accettare connessioni solamente dalle risorse autorizzate, evitando regole che consentano accesso indiscriminato.
+
+## Network ACLs
+
+I Network ACLs possono fornire un ulteriore livello di controllo a livello di subnet.
+
+Vengono utilizzati come layer aggiuntivo rispetto ai Security Groups.
+
+La configurazione deve rimanere semplice e coerente con i Security Groups, evitando regole eccessivamente complesse che rendano difficile il troubleshooting.
+
+## Lambda & VPC
+
+Le Lambda functions devono essere inserite nella VPC solamente quando necessario.
+
+Non tutte le funzioni Lambda devono necessariamente essere collegate alla VPC.
+
+Le funzioni che devono accedere a risorse private come Aurora PostgreSQL o OpenSearch possono essere configurate all'interno delle Private Subnets.
+
+Le Lambda che utilizzano esclusivamente servizi AWS pubblici possono essere mantenute fuori dalla VPC quando non è necessario un accesso privato.
+
+Questa distinzione permette di ridurre la complessità del networking.
+
+## Database Network Isolation
+
+Aurora PostgreSQL deve essere distribuito in Private Subnets.
+
+Il flusso applicativo previsto è:
+
+```text id="r7f8fj"
+Lambda
+   │
+   ▼
+RDS Proxy
+   │
+   ▼
+Aurora PostgreSQL
+```
+
+Non deve essere consentito un accesso diretto al database da Internet.
+
+L'accesso deve essere limitato tramite Security Groups e IAM authentication o database credentials gestite tramite Secrets Manager, secondo la strategia che verrà definita durante l'implementazione.
+
+## OpenSearch Network Isolation
+
+OpenSearch deve essere protetto da accessi pubblici non necessari.
+
+Quando configurato all'interno della VPC, l'accesso deve essere limitato ai componenti autorizzati.
+
+Il pattern previsto è:
+
+```text id="p1cyd6"
+Lambda / Worker
+       │
+       ▼
+OpenSearch
+```
+
+L'accesso al cluster deve essere regolato tramite network controls e access policies.
+
+## S3 Network Access
+
+Amazon S3 è un servizio managed e non viene rappresentato come una risorsa all'interno delle subnet della VPC.
+
+Quando necessario, l'accesso da risorse private può essere effettuato tramite VPC Endpoint.
+
+I bucket devono inoltre utilizzare policy e IAM permissions per limitare l'accesso agli oggetti.
+
+## Availability Zones
+
+Le risorse stateful e i componenti critici devono essere progettati considerando più Availability Zones.
+
+In particolare:
+
+* Aurora deve utilizzare una configurazione multi-AZ appropriata;
+* le subnet private devono essere distribuite su più Availability Zones;
+* i componenti di rete critici non devono introdurre un singolo punto di failure quando non necessario.
 
 ## DNS
 
-La risoluzione DNS interna alla VPC sarà gestita tramite i meccanismi DNS forniti da AWS.
+La VPC utilizzerà il DNS fornito da AWS per la risoluzione dei nomi interni e dei servizi AWS.
 
-I componenti interni dovranno utilizzare gli endpoint appropriati senza dipendere da indirizzi IP statici quando non necessario.
+Le configurazioni DNS specifiche verranno definite durante l'implementazione Terraform.
 
-Gli endpoint pubblici e privati verranno distinti in base al servizio e al livello di esposizione richiesto.
+## Network Monitoring
 
----
+Il traffico di rete può essere monitorato tramite VPC Flow Logs.
 
-## Logging e monitoring della rete
+I log possono essere inviati verso servizi di observability come CloudWatch Logs o altri sistemi di analisi definiti successivamente.
 
-Le attività di rete devono essere osservabili quando necessario.
+Gli obiettivi principali sono:
 
-Gli strumenti che potranno essere utilizzati includono:
+* troubleshooting;
+* security analysis;
+* identificazione di traffico inatteso;
+* analisi delle connessioni tra risorse.
 
-* VPC Flow Logs;
-* CloudWatch;
-* CloudTrail;
-* AWS X-Ray per il tracing applicativo.
+## Network Security Principles
 
-L'abilitazione e la retention dei log verranno definite nella configurazione infrastrutturale.
+La configurazione di rete deve seguire questi principi:
 
----
+* nessun accesso pubblico diretto al database;
+* Private Subnets per le risorse sensibili;
+* Security Groups con regole specifiche;
+* Network ACLs come layer aggiuntivo;
+* minimo numero possibile di risorse pubbliche;
+* utilizzo di VPC Endpoints quando appropriato;
+* monitoraggio tramite VPC Flow Logs;
+* separazione tra ambienti;
+* controllo esplicito dei flussi tra componenti.
 
-## Modello concettuale
+## Open Decisions
 
-La rete può essere riassunta nei seguenti livelli:
+Alcune decisioni verranno definite durante la fase di implementazione:
 
-```text
-┌──────────────────────────────────────────────┐
-│                   Internet                   │
-└──────────────────────┬───────────────────────┘
-                       │
-                       ▼
-┌──────────────────────────────────────────────┐
-│                 Edge Layer                   │
-│        CloudFront / WAF / API Gateway        │
-└──────────────────────┬───────────────────────┘
-                       │
-                       ▼
-┌──────────────────────────────────────────────┐
-│                Application Layer              │
-│                  Lambda                      │
-└──────────────────────┬───────────────────────┘
-                       │
-                       ▼
-┌──────────────────────────────────────────────┐
-│                   Data Layer                  │
-│             RDS Proxy / Aurora               │
-└──────────────────────────────────────────────┘
-```
+* CIDR definitivo della VPC;
+* numero di Availability Zones;
+* numero e dimensione delle subnet;
+* utilizzo e topologia dei NAT Gateway;
+* VPC Endpoints necessari;
+* strategia DNS;
+* configurazione definitiva dei Security Groups;
+* configurazione dei Network ACLs;
+* strategia di accesso VPC per Lambda;
+* strategia di network isolation per OpenSearch.
 
-I servizi AWS gestiti che non richiedono accesso tramite rete privata verranno utilizzati attraverso le relative API, mentre per i servizi che necessitano di accesso privato potranno essere introdotti VPC Endpoint.
+## Related Documentation
 
----
-
-## Decisioni ancora da definire
-
-Prima dell'implementazione Terraform dovranno essere definite almeno le seguenti informazioni:
-
-* regione AWS;
-* CIDR della VPC;
-* numero di Availability Zone;
-* CIDR delle subnet;
-* strategia NAT Gateway;
-* VPC Endpoint necessari;
-* Security Group;
-* Network ACL, se necessari;
-* DNS e naming convention;
-* VPC Flow Logs;
-* strategia di accesso amministrativo;
-* eventuale necessità di VPN o altri collegamenti privati.
-
-Questi dettagli non vengono fissati in questa fase per evitare di trasformare la documentazione architetturale in una configurazione prematura.
-
----
-
-## Documenti correlati
-
-* [Architettura High Level](high-level.md)
-* [Servizi AWS](aws-services.md)
-* [Data Architecture](data.md)
-* [Event Architecture](events.md)
-* [Security](security.md)
+* [High-Level Architecture](./high-level.md)
+* [AWS Services](./aws-services.md)
+* [Data Architecture](./data.md)
+* [Event-Driven Architecture](./events.md)
+* [Security Architecture](./security.md)
+* [Architecture](./README.md)
