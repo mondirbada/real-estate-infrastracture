@@ -1,72 +1,75 @@
 flowchart LR
 
 ```
-User["User"]
+User["👤 User"]
 
-subgraph Edge["Edge"]
-    CloudFront["CloudFront"]
-    WAF["AWS WAF"]
-end
+CloudFront["☁️ CloudFront"]
+WAF["🛡️ AWS WAF"]
 
-subgraph Identity["Identity"]
-    Cognito["Cognito"]
-end
+Cognito["🔐 Cognito"]
+API["🌐 API Gateway"]
 
-subgraph API["API"]
-    APIGateway["API Gateway"]
-end
+LambdaUsers["λ Users"]
+LambdaProperties["λ Properties"]
+LambdaCRM["λ CRM"]
 
-subgraph Compute["Compute"]
-    Users["Lambda Users"]
-    Properties["Lambda Properties"]
-    CRM["Lambda CRM"]
-end
+Proxy["🔄 RDS Proxy"]
+Aurora["🗄️ Aurora PostgreSQL"]
 
-subgraph Data["Data"]
-    RDSProxy["RDS Proxy"]
-    Aurora["Aurora PostgreSQL"]
-    S3["S3"]
-    OpenSearch["OpenSearch"]
-end
+S3["📦 S3"]
 
-subgraph Async["Async Processing"]
-    EventBridge["EventBridge"]
-    SQS["SQS"]
-    StepFunctions["Step Functions"]
-end
+EventBridge["⚡ EventBridge"]
+SQS["📬 SQS"]
+OpenSearch["🔎 OpenSearch"]
 
-subgraph Platform["Platform"]
-    SES["SES"]
-    Secrets["Secrets Manager"]
-end
+StepFunctions["⚙️ Step Functions"]
+SES["✉️ SES"]
+
+Secrets["🔑 Secrets Manager"]
+
 
 User --> CloudFront
 CloudFront --> WAF
-WAF --> APIGateway
+WAF --> API
 
-User -. "authentication" .-> Cognito
-Cognito -. "token" .-> APIGateway
+User -.-> Cognito
+Cognito -.-> API
 
-APIGateway --> Users
-APIGateway --> Properties
-APIGateway --> CRM
+API --> LambdaUsers
+API --> LambdaProperties
+API --> LambdaCRM
 
-Users --> RDSProxy
-Properties --> RDSProxy
-CRM --> RDSProxy
+LambdaUsers --> Proxy
+LambdaProperties --> Proxy
+LambdaCRM --> Proxy
 
-RDSProxy --> Aurora
+Proxy --> Aurora
 
-Properties --> S3
-Properties --> EventBridge
+LambdaProperties --> S3
+LambdaProperties --> EventBridge
 
 EventBridge --> SQS
-EventBridge --> StepFunctions
-
 SQS --> OpenSearch
+
+EventBridge --> StepFunctions
 StepFunctions --> SES
 
-Users -.-> Secrets
-Properties -.-> Secrets
-CRM -.-> Secrets
+LambdaUsers -.-> Secrets
+LambdaProperties -.-> Secrets
+LambdaCRM -.-> Secrets
+
+
+classDef user fill:#f5f5f5,stroke:#333,stroke-width:2px;
+classDef edge fill:#e8f1ff,stroke:#4a78c2,stroke-width:2px;
+classDef compute fill:#fff3cd,stroke:#d39e00,stroke-width:2px;
+classDef data fill:#e8f5e9,stroke:#388e3c,stroke-width:2px;
+classDef async fill:#f3e5f5,stroke:#8e44ad,stroke-width:2px;
+classDef security fill:#fce4ec,stroke:#c2185b,stroke-width:2px;
+
+class User user;
+class CloudFront,WAF,Cognito,API edge;
+class LambdaUsers,LambdaProperties,LambdaCRM compute;
+class Proxy,Aurora,S3,OpenSearch data;
+class EventBridge,SQS,StepFunctions,SES async;
+class Secrets security;
 ```
