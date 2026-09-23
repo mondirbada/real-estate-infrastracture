@@ -1,92 +1,92 @@
-```mermaid
 flowchart TB
 
-    User["User"]
+```
+User["User"]
 
-    subgraph Edge["Edge & Security"]
-        CloudFront["CloudFront"]
-        WAF["AWS WAF"]
-    end
+subgraph Edge["Edge & Security"]
+    CloudFront["CloudFront"]
+    WAF["AWS WAF"]
+end
 
-    subgraph Identity["Identity"]
-        Cognito["Amazon Cognito"]
-    end
+subgraph Identity["Identity"]
+    Cognito["Amazon Cognito"]
+end
 
-    subgraph API["API Layer"]
-        APIGateway["API Gateway"]
-    end
+subgraph API["API Layer"]
+    APIGateway["API Gateway"]
+end
 
-    subgraph Compute["Serverless Compute"]
-        LambdaUsers["Lambda - Users"]
-        LambdaProperties["Lambda - Properties"]
-        LambdaCRM["Lambda - CRM"]
-    end
+subgraph Compute["Serverless Compute"]
+    LambdaUsers["Lambda - Users"]
+    LambdaProperties["Lambda - Properties"]
+    LambdaCRM["Lambda - CRM"]
+end
 
-    subgraph Data["Data Layer"]
-        RDSProxy["RDS Proxy"]
-        Aurora["Aurora PostgreSQL"]
-        S3["Amazon S3"]
-        OpenSearch["OpenSearch"]
-    end
+subgraph Data["Data Layer"]
+    RDSProxy["RDS Proxy"]
+    Aurora["Aurora PostgreSQL"]
+    S3["Amazon S3"]
+    OpenSearch["OpenSearch"]
+end
 
-    subgraph Messaging["Messaging & Events"]
-        EventBridge["EventBridge"]
-        SQS["SQS"]
-        StepFunctions["Step Functions"]
-    end
+subgraph Messaging["Messaging & Events"]
+    EventBridge["EventBridge"]
+    SQS["SQS"]
+    StepFunctions["Step Functions"]
+end
 
-    subgraph Platform["Platform Services"]
-        SES["Amazon SES"]
-        Secrets["Secrets Manager"]
-    end
+subgraph Platform["Platform Services"]
+    SES["Amazon SES"]
+    Secrets["Secrets Manager"]
+end
 
-    subgraph Observability["Observability"]
-        CloudWatch["CloudWatch"]
-        XRay["X-Ray"]
-        CloudTrail["CloudTrail"]
-    end
+subgraph Observability["Observability"]
+    CloudWatch["CloudWatch"]
+    XRay["X-Ray"]
+    CloudTrail["CloudTrail"]
+end
 
-    User --> CloudFront
-    CloudFront --> WAF
+User --> CloudFront
+CloudFront --> WAF
 
-    User --> Cognito
-    Cognito --> APIGateway
+User --> Cognito
+Cognito --> APIGateway
 
-    WAF --> APIGateway
+WAF --> APIGateway
 
-    APIGateway --> LambdaUsers
-    APIGateway --> LambdaProperties
-    APIGateway --> LambdaCRM
+APIGateway --> LambdaUsers
+APIGateway --> LambdaProperties
+APIGateway --> LambdaCRM
 
-    LambdaUsers --> RDSProxy
-    LambdaProperties --> RDSProxy
-    LambdaCRM --> RDSProxy
+LambdaUsers --> RDSProxy
+LambdaProperties --> RDSProxy
+LambdaCRM --> RDSProxy
 
-    RDSProxy --> Aurora
+RDSProxy --> Aurora
 
-    LambdaProperties --> S3
-    LambdaProperties --> EventBridge
+LambdaProperties --> S3
+LambdaProperties --> EventBridge
 
-    EventBridge --> SQS
-    EventBridge --> StepFunctions
+EventBridge --> SQS
+EventBridge --> StepFunctions
 
-    SQS --> OpenSearch
-    StepFunctions --> SES
+SQS --> OpenSearch
+StepFunctions --> SES
 
-    LambdaUsers --> Secrets
-    LambdaProperties --> Secrets
-    LambdaCRM --> Secrets
+LambdaUsers --> Secrets
+LambdaProperties --> Secrets
+LambdaCRM --> Secrets
 
-    LambdaUsers --> CloudWatch
-    LambdaProperties --> CloudWatch
-    LambdaCRM --> CloudWatch
+LambdaUsers --> CloudWatch
+LambdaProperties --> CloudWatch
+LambdaCRM --> CloudWatch
 
-    LambdaUsers --> XRay
-    LambdaProperties --> XRay
-    LambdaCRM --> XRay
+LambdaUsers --> XRay
+LambdaProperties --> XRay
+LambdaCRM --> XRay
 
-    APIGateway --> CloudWatch
-    WAF --> CloudWatch
+APIGateway --> CloudWatch
+WAF --> CloudWatch
 
-    CloudTrail --> CloudWatch
+CloudTrail --> CloudWatch
 ```
