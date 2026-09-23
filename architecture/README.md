@@ -1,77 +1,124 @@
 # Architettura
 
-Questa directory contiene la documentazione dell'architettura infrastrutturale della piattaforma.
+Questa sezione descrive l'architettura della piattaforma di gestione immobiliare e le principali scelte architetturali.
 
-L'obiettivo è fornire una rappresentazione chiara e condivisa dei componenti che costituiscono il sistema, delle loro responsabilità e delle modalità con cui comunicano tra loro.
+L'obiettivo è definire in modo chiaro:
 
-La documentazione è organizzata per livelli di dettaglio, partendo dalla visione generale fino ad arrivare agli aspetti specifici dell'infrastruttura.
+* i principali componenti del sistema;
+* i servizi AWS utilizzati;
+* l'architettura di rete;
+* la gestione dei dati;
+* i flussi event-driven;
+* gli aspetti di sicurezza;
+* le relazioni tra i diversi componenti dell'infrastruttura.
 
----
+## Diagrammi dell'architettura
 
-## Contenuti
+### Architettura di alto livello
 
-| Documento                       | Descrizione                                                        |
-| ------------------------------- | ------------------------------------------------------------------ |
-| [High Level](high-level.md)     | Vista generale dell'intera piattaforma                             |
-| [Servizi AWS](aws-services.md)  | Servizi AWS utilizzati e relative responsabilità                   |
-| [Networking](networking.md)     | Struttura della rete e comunicazioni tra i componenti              |
-| [Data Architecture](data.md)    | Gestione, persistenza e flusso dei dati                            |
-| [Event Architecture](events.md) | Architettura event-driven e comunicazione asincrona                |
-| [Security](security.md)         | Autenticazione, autorizzazione e principali controlli di sicurezza |
+![Architettura di alto livello](./diagrams/high-level.jpeg)
 
----
+Panoramica dei principali componenti del sistema e delle loro relazioni.
 
-## Diagrammi
+### Architettura AWS
 
-I diagrammi architetturali sono raccolti nella directory [`diagrams/`](diagrams/).
+![Architettura AWS](./diagrams/aws-architecture.jpeg)
 
-```text
-architecture/
-├── README.md
-├── high-level.md
-├── aws-services.md
-├── networking.md
-├── data.md
-├── events.md
-├── security.md
-└── diagrams/
-```
+Vista dettagliata dei servizi AWS che compongono la piattaforma.
 
-I diagrammi saranno realizzati principalmente tramite **Mermaid**, così da poter essere versionati insieme alla documentazione e modificati tramite Pull Request.
+### Architettura di rete
 
----
+![Architettura di rete](./diagrams/network.jpeg)
 
-## Come leggere l'architettura
+VPC, subnet, confini di rete e risorse private.
 
-La documentazione segue un approccio progressivo.
+### Flusso dei dati
 
-Si parte dalla vista **High Level**, che mostra i principali componenti della piattaforma e le loro relazioni.
+![Flusso dei dati](./diagrams/data-flow.jpeg)
 
-Successivamente vengono approfonditi:
+Principali flussi dei dati tra API, Lambda, database, storage e motore di ricerca.
 
-1. i servizi AWS utilizzati;
-2. la struttura di rete;
-3. la gestione dei dati;
-4. la comunicazione tramite eventi;
-5. gli aspetti di sicurezza.
+### Architettura Event-Driven
 
-Questo permette di comprendere prima il funzionamento generale del sistema e successivamente i singoli aspetti infrastrutturali.
+![Architettura Event-Driven](./diagrams/events.jpeg)
 
----
+Routing degli eventi e gestione delle elaborazioni asincrone tramite EventBridge, SQS e Step Functions.
 
-## Principio di aggiornamento
+### Architettura di sicurezza
 
-La documentazione architetturale deve rimanere coerente con l'architettura effettivamente adottata.
+![Architettura di sicurezza](./diagrams/security.jpeg)
 
-Quando una modifica infrastrutturale cambia in modo significativo:
+Gestione delle identità, controllo degli accessi, sicurezza di rete, crittografia, gestione dei segreti e audit.
 
-* un componente;
-* una relazione tra componenti;
-* un flusso di dati;
-* un flusso di eventi;
-* un confine di sicurezza;
-* una scelta architetturale;
+## Componenti principali
 
-devono essere aggiornati anche i documenti e i diagrammi interessati.
+### Frontend e accesso
 
-Per decisioni architetturali significative è inoltre previsto l'utilizzo degli **Architecture Decision Records (ADR)** presenti nella directory [`decisions/`](../decisions/).
+* **Next.js** — applicazione frontend.
+* **CloudFront** — distribuzione dei contenuti e CDN.
+* **AWS WAF** — protezione del traffico HTTP/HTTPS.
+* **Amazon Cognito** — autenticazione e gestione degli utenti.
+
+### API e compute
+
+* **API Gateway** — esposizione delle API.
+* **AWS Lambda** — esecuzione della logica applicativa.
+* **RDS Proxy** — gestione delle connessioni verso il database.
+
+### Database e storage
+
+* **Amazon Aurora PostgreSQL** — database relazionale principale.
+* **Amazon S3** — archiviazione di immagini, documenti e altri file.
+* **Amazon OpenSearch** — ricerca e indicizzazione dei dati.
+
+### Eventi e processi asincroni
+
+* **Amazon EventBridge** — gestione e routing degli eventi applicativi.
+* **Amazon SQS** — code per l'elaborazione asincrona.
+* **AWS Step Functions** — orchestrazione dei workflow.
+* **Amazon SES** — invio delle comunicazioni email.
+
+### Sicurezza e gestione dei segreti
+
+* **AWS IAM** — gestione delle identità e delle autorizzazioni AWS.
+* **AWS Secrets Manager** — gestione centralizzata dei segreti.
+* **AWS KMS** — gestione delle chiavi di crittografia.
+
+### Osservabilità e audit
+
+* **Amazon CloudWatch** — log, metriche, dashboard e allarmi.
+* **AWS X-Ray** — tracing delle richieste.
+* **AWS CloudTrail** — audit delle operazioni effettuate sulle risorse AWS.
+* **VPC Flow Logs** — monitoraggio del traffico di rete.
+
+## Documentazione
+
+La documentazione dell'architettura è suddivisa nei seguenti documenti:
+
+* [Architettura di alto livello](./high-level.md)
+* [Servizi AWS](./aws-services.md)
+* [Architettura di rete](./networking.md)
+* [Architettura dei dati](./data.md)
+* [Architettura degli eventi](./events.md)
+* [Architettura di sicurezza](./security.md)
+
+## Principi architetturali
+
+L'architettura segue alcuni principi fondamentali:
+
+* utilizzo di servizi gestiti AWS dove appropriato;
+* approccio serverless per il compute applicativo;
+* separazione delle responsabilità tra i componenti;
+* minimizzazione della superficie pubblica;
+* gestione centralizzata dell'autenticazione e delle autorizzazioni;
+* utilizzo di comunicazioni asincrone per i processi non sincroni;
+* separazione tra dati transazionali e dati utilizzati per la ricerca;
+* sicurezza basata sul principio del least privilege;
+* osservabilità centralizzata;
+* isolamento tra gli ambienti applicativi.
+
+## Stato della documentazione
+
+Questa sezione descrive l'architettura prevista della piattaforma.
+
+L'infrastruttura AWS non è ancora implementata tramite Terraform. Le configurazioni IaC verranno definite in una fase successiva, sulla base delle decisioni architetturali documentate in questa repository.
