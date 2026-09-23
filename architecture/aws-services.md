@@ -1,202 +1,131 @@
-# Servizi AWS
+# AWS Services
 
-Questo documento descrive i principali servizi AWS utilizzati dalla piattaforma, la loro responsabilità e il loro ruolo all'interno dell'architettura.
+## Overview
 
-L'obiettivo non è descrivere le configurazioni tecniche dei singoli servizi, ma definire **perché ogni servizio esiste e quale responsabilità ha**.
+La piattaforma utilizza diversi servizi AWS, ognuno con una responsabilità specifica all'interno dell'architettura.
 
----
+L'obiettivo è utilizzare servizi gestiti e Serverless dove appropriato, riducendo la necessità di gestire direttamente server e componenti infrastrutturali.
 
-## Frontend e accesso
+## Architecture Diagram
+
+![AWS Architecture](./diagrams/aws-architecture.jpeg)
+
+## Edge & Delivery
 
 ### Amazon CloudFront
 
-**Responsabilità:** distribuzione del frontend e gestione dell'accesso ai contenuti pubblici.
+CloudFront viene utilizzato come CDN e come punto di distribuzione del frontend.
 
-CloudFront rappresenta il punto di ingresso principale per il frontend della piattaforma.
+Responsabilità principali:
 
-Viene utilizzato per:
-
-* distribuire i contenuti attraverso una CDN;
-* ridurre la latenza per gli utenti;
-* gestire la distribuzione degli asset statici;
-* applicare controlli di sicurezza a livello edge;
-* integrare AWS WAF.
-
-```text
-User
- │
- ▼
-CloudFront
- │
- ▼
-Frontend
-```
-
----
-
-### Next.js
-
-**Responsabilità:** frontend dell'applicazione.
-
-Next.js costituisce l'interfaccia utilizzata dagli utenti per interagire con la piattaforma.
-
-Il frontend comunica principalmente con:
-
-* Amazon Cognito per l'autenticazione;
-* API Gateway per le API applicative;
-* CloudFront per la distribuzione.
-
----
-
-## Autenticazione e sicurezza
-
-### Amazon Cognito
-
-**Responsabilità:** gestione dell'identità e autenticazione degli utenti.
-
-Cognito gestisce:
-
-* registrazione degli utenti;
-* autenticazione;
-* gestione delle sessioni;
-* emissione dei token;
-* informazioni relative all'identità dell'utente.
-
-Il frontend utilizza Cognito per autenticare l'utente prima di effettuare richieste verso le API protette.
-
-```text
-User
- │
- ▼
-Next.js
- │
- ▼
-Cognito
- │
- ▼
-Access Token
- │
- ▼
-API Gateway
-```
-
----
+* distribuzione degli asset statici;
+* caching dei contenuti;
+* riduzione della latenza;
+* integrazione con AWS WAF;
+* gestione del traffico verso il frontend.
 
 ### AWS WAF
 
-**Responsabilità:** protezione degli endpoint esposti pubblicamente.
+AWS WAF protegge le applicazioni web da traffico indesiderato e attacchi comuni a livello HTTP/HTTPS.
 
-AWS WAF viene utilizzato per applicare regole di sicurezza alle richieste HTTP.
+Responsabilità principali:
 
-Può essere utilizzato per:
+* Web ACLs;
+* IP filtering;
+* rate limiting;
+* protezione da pattern di attacco comuni;
+* controllo del traffico applicativo.
 
-* filtrare richieste indesiderate;
-* limitare pattern di traffico sospetti;
-* applicare rate limiting;
-* proteggere dagli attacchi web più comuni.
+## Identity & Access
 
-Il posizionamento e le regole specifiche verranno documentati nella sezione dedicata alla sicurezza.
+### Amazon Cognito
 
----
+Amazon Cognito gestisce l'autenticazione degli utenti della piattaforma.
+
+Responsabilità principali:
+
+* registrazione degli utenti;
+* login;
+* gestione delle sessioni;
+* gestione dei token;
+* integrazione con il frontend e API Gateway.
+
+Cognito riguarda principalmente le identità degli utenti applicativi.
 
 ### AWS IAM
 
-**Responsabilità:** gestione delle autorizzazioni verso le risorse AWS.
+AWS IAM gestisce le identità e le autorizzazioni necessarie ai servizi AWS.
 
-IAM viene utilizzato per definire:
+Viene utilizzato per:
 
-* ruoli;
-* policy;
-* permessi;
-* identità utilizzate dai servizi.
+* Lambda execution roles;
+* accesso a S3;
+* accesso a Secrets Manager;
+* accesso a EventBridge;
+* accesso a SQS;
+* accesso ad altri servizi AWS.
 
-L'architettura segue il principio del **least privilege**, concedendo a ogni componente solamente i permessi necessari per svolgere la propria funzione.
+L'accesso alle risorse deve seguire il principio di Least Privilege.
 
----
-
-## API e backend
+## API & Compute
 
 ### Amazon API Gateway
 
-**Responsabilità:** esposizione e gestione delle API backend.
+API Gateway espone le API backend utilizzate dal frontend e dai client autorizzati.
 
-API Gateway rappresenta il punto di ingresso alle funzionalità backend della piattaforma.
+Responsabilità principali:
 
-Si occupa principalmente di:
-
-* ricevere le richieste HTTP;
-* instradare le richieste verso le Lambda corrette;
-* applicare autenticazione e autorizzazione;
-* gestire configurazioni comuni delle API;
-* integrare funzionalità di monitoring e logging.
-
-```text
-Next.js
-   │
-   ▼
-API Gateway
-   │
-   ├──► Users Lambda
-   ├──► Properties Lambda
-   └──► CRM Lambda
-```
-
----
+* API endpoints;
+* routing delle richieste;
+* integrazione con Lambda;
+* gestione dell'autenticazione e autorizzazione;
+* throttling;
+* gestione del traffico API.
 
 ### AWS Lambda
 
-**Responsabilità:** esecuzione della logica backend.
+Lambda costituisce il principale layer di compute applicativo.
 
-Lambda viene utilizzato per eseguire il codice backend senza gestire server persistenti.
+Viene utilizzato per:
 
-Le funzioni sono organizzate per responsabilità funzionale.
+* business logic;
+* API handlers;
+* processing asincrono;
+* event consumers;
+* background workers;
+* integrazione tra servizi AWS.
 
-Esempi iniziali:
-
-```text
-Users Lambda
-Properties Lambda
-CRM Lambda
-```
-
-Le Lambda possono comunicare con:
-
-* RDS Proxy;
-* S3;
-* EventBridge;
-* SQS;
-* OpenSearch;
-* Step Functions;
-* altri servizi AWS necessari alla loro responsabilità.
-
----
+Le funzioni Lambda devono essere progettate con responsabilità specifiche e IAM roles dedicati.
 
 ## Database
 
 ### Amazon Aurora PostgreSQL
 
-**Responsabilità:** persistenza principale dei dati applicativi.
+Aurora PostgreSQL costituisce il database relazionale principale.
 
-Aurora PostgreSQL rappresenta il database relazionale principale della piattaforma.
+Viene utilizzato per i dati transazionali dell'applicazione, inclusi:
 
-Viene utilizzato per dati strutturati come:
-
-* utenti;
-* immobili;
-* informazioni CRM;
-* lead;
+* Users;
+* Properties;
+* CRM;
 * relazioni tra entità;
-* configurazioni applicative.
+* configurazioni applicative;
+* dati transazionali.
 
-Aurora rappresenta la **fonte primaria dei dati applicativi**.
-
----
+Aurora deve essere distribuito all'interno di Private Subnets e non deve essere direttamente accessibile da Internet.
 
 ### Amazon RDS Proxy
 
-**Responsabilità:** gestione delle connessioni tra Lambda e Aurora.
+RDS Proxy viene utilizzato tra Lambda e Aurora PostgreSQL.
 
-RDS Proxy viene utilizzato come livello intermedio tra le Lambda e il database.
+Responsabilità principali:
+
+* connection pooling;
+* gestione delle connessioni concorrenti;
+* riduzione del numero di connessioni dirette verso Aurora;
+* maggiore stabilità durante picchi di esecuzioni Lambda.
+
+Il flusso principale è:
 
 ```text
 Lambda
@@ -208,60 +137,54 @@ RDS Proxy
 Aurora PostgreSQL
 ```
 
-Il proxy permette di gestire in maniera più efficiente le connessioni provenienti da un ambiente serverless, dove numerose Lambda possono essere eseguite contemporaneamente.
-
----
-
 ## Storage
 
 ### Amazon S3
 
-**Responsabilità:** storage degli oggetti e dei file.
-
-S3 viene utilizzato per contenuti che non devono essere memorizzati direttamente nel database relazionale.
+Amazon S3 viene utilizzato per l'archiviazione degli oggetti.
 
 Esempi:
 
-* immagini degli immobili;
+* property images;
 * documenti;
 * allegati;
-* file generati dalla piattaforma;
-* altri contenuti multimediali.
+* file caricati dagli utenti;
+* altri contenuti non relazionali.
 
-```text
-Application
-     │
-     ▼
-    S3
-     │
-     ├── Images
-     ├── Documents
-     └── Files
-```
+Il database conserva i metadati e i riferimenti agli oggetti, mentre i file vengono archiviati su S3.
 
-I metadati relativi ai file possono essere mantenuti in Aurora mentre il contenuto fisico viene conservato su S3.
+Per l'accesso ai file possono essere utilizzati presigned URLs.
 
----
+## Search
 
-## Eventi e messaggistica
+### Amazon OpenSearch
+
+OpenSearch viene utilizzato come search and indexing layer.
+
+Responsabilità principali:
+
+* full-text search;
+* ricerca filtrata;
+* indexing delle proprietà;
+* query ottimizzate per la ricerca;
+* supporto alle funzionalità di discovery degli immobili.
+
+Aurora PostgreSQL rimane il sistema principale per i dati transazionali.
+
+OpenSearch mantiene invece una rappresentazione indicizzata dei dati necessari alle operazioni di ricerca.
+
+## Event-Driven Architecture
 
 ### Amazon EventBridge
 
-**Responsabilità:** distribuzione degli eventi tra i componenti della piattaforma.
+EventBridge costituisce il principale event bus dell'applicazione.
 
-EventBridge costituisce il principale event bus dell'architettura.
+Viene utilizzato per:
 
-I servizi possono pubblicare eventi senza conoscere direttamente i consumer.
-
-```text
-                ┌──► Lambda
-                │
-Service ──► EventBridge ──► SQS
-                │
-                └──► Step Functions
-```
-
-Questo modello riduce l'accoppiamento tra i componenti.
+* pubblicazione degli eventi;
+* routing degli eventi;
+* decoupling tra componenti;
+* integrazione tra servizi.
 
 Esempi di eventi:
 
@@ -269,24 +192,24 @@ Esempi di eventi:
 PropertyCreated
 PropertyUpdated
 PropertyPublished
-
-LeadCreated
-LeadUpdated
-
+PropertyDeleted
 MediaUploaded
+UserCreated
 ```
-
-La struttura definitiva degli eventi sarà definita in `architecture/events.md`.
-
----
 
 ### Amazon SQS
 
-**Responsabilità:** gestione delle code per le elaborazioni asincrone.
+SQS viene utilizzato per le elaborazioni asincrone.
 
-SQS viene utilizzato quando un'operazione non deve essere completata durante la richiesta HTTP.
+Responsabilità principali:
 
-Esempio:
+* buffering;
+* decoupling;
+* gestione dei workload asincroni;
+* retry;
+* gestione dei messaggi non elaborati tramite Dead-Letter Queue.
+
+Il pattern principale è:
 
 ```text
 EventBridge
@@ -295,274 +218,144 @@ EventBridge
     SQS
      │
      ▼
-Worker Lambda
+Lambda Worker
 ```
-
-I principali vantaggi sono:
-
-* disaccoppiamento tra producer e consumer;
-* gestione delle richieste asincrone;
-* possibilità di retry;
-* gestione dei picchi di traffico;
-* maggiore resilienza.
-
----
-
-### Lambda Workers
-
-**Responsabilità:** elaborazione asincrona dei messaggi provenienti dalle code.
-
-I worker Lambda consumano i messaggi presenti nelle code SQS ed eseguono le operazioni necessarie.
-
-Esempi:
-
-* aggiornamento degli indici OpenSearch;
-* elaborazione di file;
-* sincronizzazioni;
-* elaborazioni di background;
-* notifiche.
-
----
-
-## Ricerca
-
-### Amazon OpenSearch
-
-**Responsabilità:** ricerca e indicizzazione.
-
-OpenSearch viene utilizzato per fornire funzionalità di ricerca efficienti sui dati che richiedono indicizzazione.
-
-Aurora rimane la fonte primaria dei dati.
-
-OpenSearch rappresenta invece una vista ottimizzata per la ricerca.
-
-```text
-Aurora
-   │
-   ▼
-EventBridge
-   │
-   ▼
-SQS
-   │
-   ▼
-Worker Lambda
-   │
-   ▼
-OpenSearch
-```
-
-Questo permette di mantenere separati:
-
-* persistenza dei dati;
-* indicizzazione;
-* ricerca.
-
----
-
-## Workflow
 
 ### AWS Step Functions
 
-**Responsabilità:** orchestrazione di workflow complessi.
+Step Functions viene utilizzato per orchestrare workflow composti da più passaggi.
 
-Step Functions viene utilizzato quando un processo richiede più passaggi coordinati e una gestione esplicita dello stato.
+È adatto a processi che richiedono:
 
-Può gestire:
-
-* sequenze di operazioni;
-* branching;
+* più step;
+* gestione dello stato;
 * retry;
-* timeout;
-* gestione degli errori;
-* esecuzione di servizi diversi.
+* error handling;
+* branching;
+* esecuzione sequenziale o parallela.
 
-Esempio concettuale:
-
-```text
-Start
-  │
-  ▼
-Validate
-  │
-  ▼
-Process
-  │
-  ├──► Success
-  │
-  └──► Error / Retry
-```
-
----
-
-## Email
+## Notifications
 
 ### Amazon SES
 
-**Responsabilità:** invio delle email applicative.
+SES viene utilizzato per l'invio delle email generate dalla piattaforma.
 
-SES viene utilizzato per l'invio di email generate dalla piattaforma.
+Può essere integrato con Lambda, EventBridge e Step Functions.
 
 Esempi:
 
-* notifiche;
+* notifiche relative agli immobili;
+* comunicazioni CRM;
 * email transazionali;
-* comunicazioni relative ai processi applicativi;
-* notifiche generate da workflow.
+* notifiche relative a workflow applicativi.
 
-SES verrà integrato principalmente con Lambda e/o Step Functions in base al tipo di workflow.
-
----
-
-## Secrets
+## Security & Secrets
 
 ### AWS Secrets Manager
 
-**Responsabilità:** gestione sicura dei segreti.
+Secrets Manager viene utilizzato per la gestione centralizzata dei secrets.
 
-Secrets Manager viene utilizzato per memorizzare informazioni sensibili necessarie ai servizi applicativi.
+Può contenere:
 
-Esempi:
+* database credentials;
+* API keys;
+* application secrets;
+* altri valori sensibili.
 
-* credenziali;
-* API key;
-* secret;
-* configurazioni sensibili.
+I secrets non devono essere salvati nel repository Git o direttamente all'interno del codice applicativo.
 
-I segreti non devono essere inseriti:
+### AWS KMS
 
-* nel codice;
-* nei repository Git;
-* nei file di configurazione versionati;
-* nelle immagini container.
+KMS viene utilizzato per la gestione delle encryption keys.
 
-L'accesso ai secret deve essere controllato tramite IAM.
+Può essere integrato con:
 
----
+* S3;
+* Aurora;
+* Secrets Manager;
+* altri servizi AWS che supportano encryption tramite KMS.
 
-## Monitoring e osservabilità
+## Observability & Audit
 
 ### Amazon CloudWatch
 
-**Responsabilità:** monitoring, logging e metriche.
+CloudWatch viene utilizzato per:
 
-CloudWatch viene utilizzato per raccogliere:
+* logs;
+* metrics;
+* dashboards;
+* alarms;
+* monitoring.
 
-* log;
-* metriche;
-* allarmi;
-* informazioni operative.
-
-I principali componenti dell'architettura devono essere osservabili tramite CloudWatch.
-
----
+Lambda, API Gateway e altri servizi AWS possono inviare logs e metrics a CloudWatch.
 
 ### AWS X-Ray
 
-**Responsabilità:** distributed tracing.
+X-Ray viene utilizzato per il distributed tracing.
 
-X-Ray viene utilizzato per analizzare il percorso delle richieste attraverso i diversi componenti dell'architettura.
-
-Un esempio di tracing può essere:
-
-```text
-Frontend
-   │
-   ▼
-API Gateway
-   │
-   ▼
-Lambda
-   │
-   ▼
-RDS Proxy
-   │
-   ▼
-Aurora
-```
-
-Il tracing è particolarmente utile per identificare:
-
-* latenze;
-* colli di bottiglia;
-* errori;
-* dipendenze tra servizi.
-
----
+Permette di seguire una richiesta attraverso diversi componenti dell'architettura e identificare problemi di latenza o errori.
 
 ### AWS CloudTrail
 
-**Responsabilità:** audit delle operazioni effettuate sulle risorse AWS.
+CloudTrail registra le operazioni effettuate tramite le API AWS.
 
-CloudTrail registra le attività effettuate tramite le API AWS e permette di ricostruire operazioni amministrative e modifiche alle risorse.
+Viene utilizzato principalmente per:
 
-Viene utilizzato come componente dell'architettura di auditing e sicurezza.
+* audit;
+* security investigations;
+* tracking delle modifiche;
+* compliance.
 
----
+### VPC Flow Logs
 
-## Infrastructure as Code
+VPC Flow Logs possono essere utilizzati per raccogliere informazioni sul traffico di rete all'interno della VPC.
 
-### Terraform
+Sono utili per troubleshooting, security analysis e network monitoring.
 
-**Responsabilità:** definizione e provisioning dell'infrastruttura tramite codice.
+## Service Responsibilities
 
-Terraform sarà utilizzato per descrivere l'infrastruttura AWS in maniera riproducibile e versionabile.
+La seguente tabella riassume le principali responsabilità:
 
-L'obiettivo è evitare configurazioni manuali non tracciate e permettere di ricreare gli ambienti tramite codice.
+| Service           | Responsabilità                 |
+| ----------------- | ------------------------------ |
+| CloudFront        | CDN e distribuzione frontend   |
+| WAF               | Web security                   |
+| Cognito           | User authentication            |
+| IAM               | Identity & access management   |
+| API Gateway       | API management                 |
+| Lambda            | Serverless compute             |
+| RDS Proxy         | Database connection management |
+| Aurora PostgreSQL | Relational database            |
+| S3                | Object storage                 |
+| OpenSearch        | Search & indexing              |
+| EventBridge       | Event routing                  |
+| SQS               | Asynchronous processing        |
+| Step Functions    | Workflow orchestration         |
+| SES               | Email delivery                 |
+| Secrets Manager   | Secrets management             |
+| KMS               | Encryption key management      |
+| CloudWatch        | Logs, metrics e monitoring     |
+| X-Ray             | Distributed tracing            |
+| CloudTrail        | Audit                          |
+| VPC Flow Logs     | Network monitoring             |
 
----
+## Design Principles
 
-## CI/CD
+L'utilizzo dei servizi AWS segue alcuni principi:
 
-### GitHub Actions
+* Preferire servizi managed quando appropriato.
+* Utilizzare Serverless compute per workload applicativi compatibili.
+* Separare le responsabilità tra servizi.
+* Utilizzare asynchronous processing quando non è necessario un flusso sincrono.
+* Applicare Least Privilege agli accessi IAM.
+* Mantenere i dati transazionali separati dagli indici di ricerca.
+* Evitare l'esposizione pubblica delle risorse sensibili.
+* Centralizzare logging, monitoring e auditing.
 
-**Responsabilità:** automazione dei processi di Continuous Integration e Continuous Delivery.
+## Related Documentation
 
-GitHub Actions verrà utilizzato per automatizzare i processi relativi all'infrastruttura e, in una fase successiva, al codice applicativo.
-
-Esempi:
-
-* validazione Terraform;
-* linting;
-* test;
-* plan;
-* deployment;
-* gestione dei diversi ambienti.
-
----
-
-## Riepilogo
-
-| Servizio          | Responsabilità principale    |
-| ----------------- | ---------------------------- |
-| CloudFront        | CDN e distribuzione frontend |
-| Cognito           | Identità e autenticazione    |
-| API Gateway       | API e routing                |
-| Lambda            | Backend serverless           |
-| Aurora PostgreSQL | Database principale          |
-| RDS Proxy         | Connection pooling           |
-| S3                | Storage di file e media      |
-| EventBridge       | Event bus                    |
-| SQS               | Code asincrone               |
-| Lambda Workers    | Elaborazioni background      |
-| OpenSearch        | Ricerca e indicizzazione     |
-| Step Functions    | Orchestrazione workflow      |
-| SES               | Invio email                  |
-| Secrets Manager   | Gestione segreti             |
-| CloudWatch        | Monitoring e logging         |
-| X-Ray             | Distributed tracing          |
-| CloudTrail        | Audit                        |
-| IAM               | Autorizzazioni               |
-| WAF               | Protezione applicativa       |
-| Terraform         | Infrastructure as Code       |
-| GitHub Actions    | CI/CD                        |
-
----
-
-## Documenti correlati
-
-* [Architettura High Level](high-level.md)
-* [Networking](networking.md)
-* [Data Architecture](data.md)
-* [Event Architecture](events.md)
-* [Security](security.md)
+* [High-Level Architecture](./high-level.md)
+* [Networking](./networking.md)
+* [Data Architecture](./data.md)
+* [Event-Driven Architecture](./events.md)
+* [Security Architecture](./security.md)
