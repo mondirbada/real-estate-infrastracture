@@ -6,6 +6,8 @@ Domora è un portale immobiliare per agenzie che pubblicano annunci di vendita e
 
 Per una lettura complessiva, partire da [Sintesi e presentazione](16-sintesi-e-presentazione.md); usare poi il percorso sotto per approfondire i singoli temi.
 
+Il [piano della demo AWS](../demo/README.md) descrive separatamente la versione semplificata da implementare per la presentazione. Per quella versione sostituisce la precedente proposta di riprodurre integralmente staging; il progetto completo resta descritto nei documenti sotto.
+
 ## Percorso di lettura
 
 | Documento | Scopo |
