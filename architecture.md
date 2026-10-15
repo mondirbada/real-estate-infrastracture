@@ -15,7 +15,7 @@ Se il contenuto è già presente nela località di richiesta, esso verrà spedit
 nell'immediato, altrimenti recupera il contenuto dove è stato hostato.
 
 - **S3 (Simple Storage Service)**
-Come dice il nome S3 è un servizio per salvare file su cloud. 
+Come dice il nome S3 è un servizio per salvare file su cloud.
 Nel nostro caso è utilizzato in coppia con CloudFront, per recuperare il sito.
 
 Quindi *CloudFront* si occupa di rendere il sito accessibile dal web;
@@ -49,7 +49,7 @@ All'interno del **BACKEND** utilizziamo al momento 4 lambde, una per ogni *scope
 dell'applicativo, in questo caso *Proprietà*, *Utenti*, *Offerte* e *Media e File*.
 
 All'interno di ogni lambda ci sarà un handler che farà da routing interno dello *scope*.
-Per esempio, parlando della lambda degli utenti, all'interno ci sarà l'handler che 
+Per esempio, parlando della lambda degli utenti, all'interno ci sarà l'handler che
 processerà l'evento arrivato, successivamente farà del routing interno e processerà
 le informazioni nella maniera corretta, come eventi `UpdateUserInformation` o `DeleteUser`.
 
@@ -59,7 +59,7 @@ Per il lato del database utilizziamo due servizi: *RDS Proxy* e *Aurora PostgreS
 L'*RDS Proxy* serve per gestire le numerose connessioni che le lambda possono creare.
 
 **NOTE**
-Questo servizio non è strettamente necessario, visto che il traffico non sarà così 
+Questo servizio non è strettamente necessario, visto che il traffico non sarà così
 elevato da dover gestire una moltitudine di connessioni, ma per sicurezza abbiamo
 deciso di implementarlo nella soluzione.
 
