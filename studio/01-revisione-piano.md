@@ -1,5 +1,14 @@
 # Revisione del piano — real-estate-infrastructure
 
+> **Aggiornamento 2026-10-19.** Le correzioni di questa revisione sono state applicate a `architecture.md`, `problems.md`,
+> `am-management/README.md` e `diagrams/updated.drawio` (dopo aver riletto lo schema aggiornato da Tommaso e riverificato
+> sulla documentazione AWS). Rettifiche rispetto al testo qui sotto:
+> - **Notifiche:** il diagramma più recente usa **SNS → SQS**, non EventBridge: il piano è stato allineato a SNS (EventBridge resta un'alternativa).
+> - **Presigned Lambda:** va **dentro la VPC**, perché controlla sul database che l'utente possa caricare su quella proprietà (punto 3.1 corretto).
+> - **Endpoint Secrets Manager:** la documentazione AWS non dice né che serve né che non serve al proxy; resta nel piano come "da verificare in prova" (punto 3.2 corretto).
+> - Il PNG/SVG del diagramma va ri-esportato da draw.io: il `.drawio` è aggiornato, le immagini no.
+> - La seconda pagina del `.drawio` (`_OLD_OBSOLETE`) è il vecchio schema logico, ignorarla.
+
 Revisione di `main` (commit `8a3ccba`): `architecture.md`, `problems.md`, `am-management/`, `diagrams/updated.drawio`.
 Giudizio generale: **l'impianto è sensato e sopra la media per un progetto ITS**. Serverless, multi-AZ, DB privato, IAM documentato con criterio. I problemi sono pochi ma alcuni vanno sistemati prima della presentazione, perché il professore li noterà.
 
@@ -60,8 +69,8 @@ Nota: il PNG `diagrams/updated.drawio.png` è una versione **più vecchia e più
 ### 3.1 "Le Lambda devono davvero stare nella VPC?"
 **Solo quelle che parlano con l'RDS Proxy.** L'RDS Proxy ha endpoint solo dentro la VPC (non si espone su Internet), quindi per raggiungerlo la Lambda deve avere ENI nella VPC (associata a subnet e security group).
 Le altre Lambda **non devono** starci e anzi stanno meglio fuori: niente cold start extra, niente problemi di uscita verso Internet, niente costo di endpoint.
-- Probabilmente fuori: Presigned Lambda (firma un URL S3, non serve DB), Notification/Mailer Lambda (se l'evento contiene già email e testo), eventuale authorizer.
-- Dentro: Property, User, Offers (e Files se scrive metadati sul DB).
+- Fuori: Notification/Mailer Lambda (se l'evento contiene già email e testo).
+- Dentro: Property, User, Offers, Files e Presigned (la Presigned controlla sul DB i diritti dell'utente prima di firmare).
 Questa scelta riduce molto sia la complessità sia il costo (vedi 3.2).
 
 ### 3.2 NAT o VPC endpoint? (cuore del problema)
@@ -72,7 +81,7 @@ Una Lambda in VPC **non ha accesso a Internet** nemmeno se sta in una subnet pub
 Poiché non usate API esterne (come scritto: niente Stripe), **non serve il NAT**. Servono solo gli endpoint per ciò che le Lambda *in VPC* chiamano davvero:
 - Se le Lambda in VPC pubblicano eventi: endpoint per EventBridge (o SQS, se scrivono direttamente in coda).
 - S3 da dentro la VPC: gateway endpoint, gratis.
-- **Secrets Manager: le Lambda non lo chiamano** (con IAM auth verso il proxy è il proxy a leggerlo, e il proxy lo raggiunge da solo). Quindi `sg-private-link-sm` / `sg-vpc-interface-sm` nel diagramma probabilmente **non servono**. Verificare: se non c'è codice Lambda che chiama `GetSecretValue`, togliere.
+- **Secrets Manager: le Lambda non lo chiamano** (con IAM auth verso il proxy è il proxy a leggerlo, e il proxy lo raggiunge da solo). l'endpoint Secrets Manager serve solo se è il *proxy* ad averne bisogno per leggere i secret da subnet senza Internet: la documentazione non lo chiarisce, quindi si lascia nel piano e si verifica alla creazione del proxy.
 - **Cognito**: le Lambda in VPC non hanno motivo di chiamare Cognito (API Gateway valida i JWT da sé). PrivateLink per Cognito esiste da novembre 2025 ma ha limiti (non vale per hosted UI/managed login, non per client credentials, e un user pool con dominio assegnato non è compatibile). Per voi: **non serve**.
 - SNS: se SNS non serve (vedi 2), nessun endpoint.
 

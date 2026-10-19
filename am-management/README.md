@@ -7,7 +7,7 @@ Base per Aurora PostgreSQL, RDS Proxy e Secrets Manager, coerente con
 
 - Un cluster Aurora PostgreSQL: writer in una AZ e replica in un'altra AZ.
 - RDS Proxy davanti al cluster, su subnet private in almeno due AZ.
-- Le Lambda applicative si autenticano al proxy tramite IAM e TLS.
+- Le Lambda applicative si autenticano al proxy tramite IAM e TLS (token di autenticazione valido 15 minuti, richiesto con TLS).
 - Il proxy si autentica ad Aurora con username e password letti da Secrets Manager.
 - Un utente PostgreSQL e un secret per ogni ambito che richiede permessi distinti.
 - L'utente master è riservato all'amministrazione, escluso dalle connessioni applicative.
@@ -19,7 +19,9 @@ Lambda -- IAM + TLS --> RDS Proxy -- password + TLS --> Aurora PostgreSQL
 ```
 
 Questo documento descrive la configurazione prevista; non attesta risorse già
-create nell'account AWS. Secrets Manager verrà aggiunto al diagramma in seguito.
+create nell'account AWS. Il quadro generale è in [`architecture.md`](../architecture.md).
+Gli altri ruoli e resource policy (API Gateway, S3/CloudFront, SNS/SQS, Mailer Lambda, Presigned Lambda)
+sono in fase di definizione.
 
 ## Ruoli e responsabilità
 

@@ -21,8 +21,8 @@ Cognito User Pool
   ▼
 API Gateway ──(valida JWT)──► Lambda (Property / User / Offers / Files)
                                    │ (in VPC)            │ (altri servizi)
-                                   ▼                      ├─► EventBridge ─► SQS ─► Notification Lambda ─► SES (email)
-                              RDS Proxy ─► Aurora         └─► Presigned Lambda ─► URL firmato ─► Browser ─► S3 (bucket file)
+                                   ▼                      ├─► SNS ─► SQS ─► Mailer Lambda ─► SES (email)
+                              RDS Proxy ─► Aurora         └─► Presigned Lambda ─► presigned POST ─► Browser ─► S3 (bucket file)
                                    │
                               Secrets Manager (letto dal proxy)
 ```
@@ -193,8 +193,8 @@ Per questo progetto l'**HTTP API** è la scelta di default; la REST serve se vol
 
 **Nel progetto.**
 - Property / User / Offers / Files Lambda: business logic, router interno (stile controller).
-- **Presigned Lambda**: firma gli URL S3.
-- **Notification/Mailer Lambda**: consuma SQS e chiama SES.
+- **Presigned Lambda**: controlla sul DB i diritti dell'utente e firma il presigned POST per S3 (la firma è locale, non chiama S3); sta in VPC.
+- **Mailer Lambda**: fuori VPC; consuma SQS e chiama SES.
 - (Eventuale Lambda Authorizer.)
 
 **Connessione al DB da Lambda: il problema.** Ogni istanza apre la sua connessione; con 200 invocazioni concorrenti si hanno 200 connessioni e PostgreSQL ha un limite (`max_connections`). → **RDS Proxy**. Inoltre: apri la connessione **fuori** dall'handler per riusarla.
@@ -292,9 +292,11 @@ Il progetto usa le chiavi di default; la CMK è una scelta consapevole (e il fil
 
 ---
 
-## 11. EventBridge → SQS → Lambda → SES (notifiche)
+## 11. SNS → SQS → Lambda → SES (notifiche)
 
-**EventBridge.** **Bus di eventi**: i produttori inviano eventi JSON (`PutEvents`), le **regole** con *event pattern* li filtrano e li inviano ai **target** (SQS, Lambda, Step Functions…). Disaccoppia chi produce da chi consuma. Equivalente: un event bus applicativo (Spring `ApplicationEventPublisher`) ma distribuito.
+**SNS.** **Pub/sub**: i produttori pubblicano su un *topic* e SNS consegna una copia a ogni sottoscrittore (SQS, Lambda, email, HTTP). Nel progetto il sottoscrittore è la coda SQS; il topic permette di aggiungere altri consumer senza toccare i produttori (*fan-out*). Dalle Lambda in VPC serve un interface endpoint.
+
+**EventBridge (alternativa, non usata nel progetto).** **Bus di eventi**: i produttori inviano eventi JSON (`PutEvents`), le **regole** con *event pattern* li filtrano e li inviano ai **target** (SQS, Lambda, Step Functions…). Disaccoppia chi produce da chi consuma. Equivalente: un event bus applicativo (Spring `ApplicationEventPublisher`) ma distribuito.
 
 **SQS.** **Coda** di messaggi gestita.
 - **Standard** (consegna *at-least-once*, ordine non garantito, scala quasi illimitata) o **FIFO** (ordine e deduplicazione, throughput inferiore).
@@ -309,10 +311,10 @@ Il progetto usa le chiavi di default; la CMK è una scelta consapevole (e il fil
 
 **Perché questa catena?** La richiesta dell'utente non aspetta l'invio email (disaccoppiamento); se SES è lento o giù, la coda trattiene i messaggi (resilienza); il picco di eventi viene assorbito (buffering). EventBridge aggiunge la possibilità di più consumer in futuro.
 
-**IAM.** Lambda produttrici: `events:PutEvents` sul bus (o `sqs:SendMessage`). **Queue policy** sulla coda che permette a `events.amazonaws.com` di scrivere, limitata alla specifica regola con `aws:SourceArn`. La Notification Lambda: `sqs:ReceiveMessage/DeleteMessage/GetQueueAttributes` + `ses:SendEmail`.
+**IAM.** Lambda produttrici: `sns:Publish` sul topic. **Queue policy** sulla coda che permette a `sns.amazonaws.com` di scrivere, limitata al topic con `aws:SourceArn`. La Mailer Lambda: `sqs:ReceiveMessage/DeleteMessage/GetQueueAttributes` + `ses:SendEmail`.
 
 **Orale:** differenza SQS/SNS/EventBridge; cos'è il visibility timeout; a cosa serve la DLQ; cos'è la sandbox SES; perché il consumer deve essere idempotente.
-Sul **SNS** del diagramma: SNS è *pub/sub* (push a più sottoscrittori: email, SMS, SQS, HTTP, Lambda). Se non lo usate davvero, toglietelo.
+Differenza da ricordare: SNS = *push* a più sottoscrittori; SQS = coda da cui il consumer *tira* i messaggi; EventBridge = bus con regole di filtro su pattern.
 
 ---
 
@@ -336,10 +338,10 @@ Per le Lambda in VPC senza accesso a Internet, i log funzionano comunque (il ser
 | Lambda (VPC) | RDS Proxy | PostgreSQL 5432, TLS, token IAM | `rds-db:connect` nell'execution role + SG `sg-rds-proxy` |
 | RDS Proxy | Secrets Manager | `GetSecretValue` | ruolo del proxy |
 | RDS Proxy | Aurora | PostgreSQL, password dal secret | SG `sg-rds` + utente PostgreSQL |
-| Lambda | EventBridge | `PutEvents` | identity policy nel ruolo |
-| EventBridge | SQS | target della regola | queue policy |
-| SQS | Notification Lambda | event source mapping | ruolo della Lambda |
-| Notification Lambda | SES | `SendEmail` | identity policy nel ruolo |
+| Lambda (VPC) | SNS | `Publish` via interface endpoint | identity policy nel ruolo + SG endpoint |
+| SNS | SQS | sottoscrizione | queue policy (principal `sns.amazonaws.com`, `aws:SourceArn` = topic) |
+| SQS | Mailer Lambda | event source mapping | ruolo della Lambda |
+| Mailer Lambda | SES | `SendEmail` | identity policy nel ruolo |
 | Presigned Lambda | S3 file | firma URL | permessi del ruolo firmatario |
 | Browser | S3 file | PUT/POST sul presigned URL | l'URL stesso (firma + scadenza) |
 

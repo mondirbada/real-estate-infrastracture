@@ -131,11 +131,11 @@ Convenzione nomi proposta: `real-estate-<env>-<componente>-<scopo>`.
 | 2 | **RDS Proxy** → `rds-proxy-secrets-role` | **ruolo** (già nel repo) | `rds.amazonaws.com` | `secretsmanager:GetSecretValue` sui soli secret app; `kms:Decrypt` se CMK |
 | 3 | **Aurora** | service-linked role `AWSServiceRoleForRDS` | gestita da AWS | `AmazonRDSServiceRolePolicy` |
 | 4 | **Lambda con DB** (Property/User/Offers/Files) | **execution role** per funzione | `lambda.amazonaws.com` | `AWSLambdaBasicExecutionRole`, `AWSLambdaVPCAccessExecutionRole`, `rds-db:connect` sul proxy+utente, `events:PutEvents` |
-| 5 | **Presigned Lambda** | execution role | `lambda.amazonaws.com` | log + `s3:PutObject` su `arn:…:bucket-file/prefisso/*` |
-| 6 | **Notification Lambda** | execution role | `lambda.amazonaws.com` | log + `sqs:ReceiveMessage/DeleteMessage/GetQueueAttributes` + `ses:SendEmail` |
+| 5 | **Presigned Lambda** (in VPC) | execution role | `lambda.amazonaws.com` | log + VPC + `rds-db:connect` + `s3:PutObject` su `arn:…:bucket-file/prefisso/*` |
+| 6 | **Mailer Lambda** (fuori VPC) | execution role | `lambda.amazonaws.com` | log + `sqs:ReceiveMessage/DeleteMessage/GetQueueAttributes` + `ses:SendEmail` |
 | 7 | **API Gateway → Lambda** | resource policy **sulla Lambda** | principal `apigateway.amazonaws.com`, `lambda:InvokeFunction`, `aws:SourceArn` = ARN dell'API | — |
 | 8 | **CloudFront → S3** | bucket policy (OAC) | principal `cloudfront.amazonaws.com`, `s3:GetObject`, `aws:SourceArn` = distribuzione | — |
-| 9 | **EventBridge → SQS** | queue policy | principal `events.amazonaws.com`, `sqs:SendMessage`, `aws:SourceArn` = regola | — |
+| 9 | **SNS → SQS** | queue policy | principal `sns.amazonaws.com`, `sqs:SendMessage`, `aws:SourceArn` = topic | — |
 | 10 | **API Gateway → CloudWatch Logs** | ruolo a livello account (REST API) | `apigateway.amazonaws.com` | `AmazonAPIGatewayPushToCloudWatchLogs` |
 | 11 | **Cognito → Lambda** (trigger, se usati) | resource policy sulla Lambda | `cognito-idp.amazonaws.com` | `lambda:InvokeFunction` |
 
@@ -213,15 +213,15 @@ Equivale a una policy con `Principal: {Service: apigateway.amazonaws.com}`.
 ```
 Spiega: *senza la condizione, qualunque distribuzione CloudFront di qualunque account potrebbe leggere il bucket (confused deputy)*.
 
-### 7.4 Queue policy: EventBridge può scrivere su SQS
+### 7.4 Queue policy: SNS può scrivere su SQS
 ```json
 { "Version": "2012-10-17",
   "Statement": [{
     "Effect": "Allow",
-    "Principal": { "Service": "events.amazonaws.com" },
+    "Principal": { "Service": "sns.amazonaws.com" },
     "Action": "sqs:SendMessage",
     "Resource": "arn:aws:sqs:eu-south-1:<ACCOUNT_ID>:notifications-queue",
-    "Condition": { "ArnEquals": { "aws:SourceArn": "arn:aws:events:eu-south-1:<ACCOUNT_ID>:rule/notify-rule" } }
+    "Condition": { "ArnEquals": { "aws:SourceArn": "arn:aws:sns:eu-south-1:<ACCOUNT_ID>:notifications-topic" } }
   }] }
 ```
 
