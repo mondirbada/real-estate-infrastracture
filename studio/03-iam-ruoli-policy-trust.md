@@ -130,13 +130,13 @@ Convenzione nomi proposta: `real-estate-<env>-<componente>-<scopo>`.
 | 1 | **Deploy** (voi/CI) | ruolo/utente con credenziali temporanee | l'identità del team | creare risorse, `iam:PassRole` sui ruoli sotto |
 | 2 | **RDS Proxy** → `rds-proxy-secrets-role` | **ruolo** (già nel repo) | `rds.amazonaws.com` | `secretsmanager:GetSecretValue` sui soli secret app; `kms:Decrypt` se CMK |
 | 3 | **Aurora** | service-linked role `AWSServiceRoleForRDS` | gestita da AWS | `AmazonRDSServiceRolePolicy` |
-| 4 | **Lambda con DB** (Property/User/Offers/Files) | **execution role** per funzione | `lambda.amazonaws.com` | `AWSLambdaBasicExecutionRole`, `AWSLambdaVPCAccessExecutionRole`, `rds-db:connect` sul proxy+utente, `events:PutEvents` |
+| 4 | **Lambda con DB** (Property/User/Offers/Files) | **execution role** per funzione | `lambda.amazonaws.com` | `AWSLambdaBasicExecutionRole`, `AWSLambdaVPCAccessExecutionRole`, `rds-db:connect` sul proxy+utente, `sns:Publish` sul topic |
 | 5 | **Presigned Lambda** (in VPC) | execution role | `lambda.amazonaws.com` | log + VPC + `rds-db:connect` + `s3:PutObject` su `arn:…:bucket-file/prefisso/*` |
 | 6 | **Mailer Lambda** (fuori VPC) | execution role | `lambda.amazonaws.com` | log + `sqs:ReceiveMessage/DeleteMessage/GetQueueAttributes` + `ses:SendEmail` |
 | 7 | **API Gateway → Lambda** | resource policy **sulla Lambda** | principal `apigateway.amazonaws.com`, `lambda:InvokeFunction`, `aws:SourceArn` = ARN dell'API | — |
 | 8 | **CloudFront → S3** | bucket policy (OAC) | principal `cloudfront.amazonaws.com`, `s3:GetObject`, `aws:SourceArn` = distribuzione | — |
 | 9 | **SNS → SQS** | queue policy | principal `sns.amazonaws.com`, `sqs:SendMessage`, `aws:SourceArn` = topic | — |
-| 10 | **API Gateway → CloudWatch Logs** | ruolo a livello account (REST API) | `apigateway.amazonaws.com` | `AmazonAPIGatewayPushToCloudWatchLogs` |
+| 10 | **API Gateway → CloudWatch Logs** | solo per le REST API: ruolo a livello account. Con la **HTTP API** (la nostra) non serve: basta indicare il log group dello stage | `apigateway.amazonaws.com` (solo REST) | `AmazonAPIGatewayPushToCloudWatchLogs` (solo REST) |
 | 11 | **Cognito → Lambda** (trigger, se usati) | resource policy sulla Lambda | `cognito-idp.amazonaws.com` | `lambda:InvokeFunction` |
 
 Il repo copre **2, 3 e (in parte) 4**. Il resto è ciò che dovete scrivere/spiegare.
@@ -225,7 +225,7 @@ Spiega: *senza la condizione, qualunque distribuzione CloudFront di qualunque ac
   }] }
 ```
 
-### 7.5 Notification Lambda → SES (con restrizione sul mittente)
+### 7.5 Mailer Lambda → SES (con restrizione sul mittente)
 ```json
 { "Effect": "Allow",
   "Action": "ses:SendEmail",

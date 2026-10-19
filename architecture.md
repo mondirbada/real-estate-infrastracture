@@ -18,7 +18,7 @@ Servizio che permette di distribuire un sito web statico e dinamico agli utenti.
 *CloudFront* inoltre gestisce la modalità per il trasporto del contenuto, cercando
 di mantenere una latenza di rete più bassa possibile.
 
-Se il contenuto è già presente nela località di richiesta, esso verrà spedito
+Se il contenuto è già presente nella località di richiesta, esso verrà spedito
 nell'immediato, altrimenti recupera il contenuto dove è stato hostato.
 
 - **S3 (Simple Storage Service)**
@@ -65,9 +65,9 @@ L'autorizzazione è su due livelli:
 - **Ownership** (se quella proprietà o offerta è sua): la lambda confronta il `sub` del token con
   il proprietario letto dal database (es. `WHERE id = :id AND owner_id = :sub`).
 
-Non usiamo una *Lambda Authorizer* separata: l'authorizer di *API Gateway* mette in cache la risposta
-(per default per tutte le route che lo usano) e una decisione per singola risorsa non è affidabile
-lì dentro; inoltre servirebbe una lettura del database a ogni richiesta.
+Non usiamo una *Lambda Authorizer* separata: se se ne attiva la cache, per default la risposta vale per
+tutte le route che usano l'authorizer, quindi una decisione per singola risorsa non è affidabile
+lì dentro; senza cache, invece, servirebbe una lettura del database a ogni richiesta.
 
 #### BUSINESS LOGIC
 
@@ -122,7 +122,8 @@ Dentro ci sono: *Aurora*, *RDS Proxy* e le 5 lambda di business.
   - *gateway endpoint* per **S3** (gratuito), se la lambda *Files* deve operare sugli oggetti.
 - La lambda *Mailer* (notifiche) non accede al database, quindi sta **fuori** dalla VPC.
 - Security group: `sg-lambda-internal` → `sg-rds-proxy` sulla porta 5432 e `sg-rds-proxy` → `sg-rds`
-  sulla 5432; `sg-lambda-internal` → `sg-endpoint-sns` (e `sg-endpoint-secrets-manager`) sulla 443.
+  sulla 5432; `sg-lambda-internal` → `sg-endpoint-sns` sulla 443; se l'endpoint di Secrets Manager
+  serve, `sg-rds-proxy` → `sg-endpoint-secrets-manager` sulla 443 (lo usa il proxy, non le lambda).
   Le lambda non raggiungono Aurora direttamente.
 
 L'endpoint di Secrets Manager serve in caso il proxy ne abbia bisogno per leggere i secret dalle subnet

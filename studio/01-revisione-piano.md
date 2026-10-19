@@ -8,6 +8,7 @@
 > - **Endpoint Secrets Manager:** la documentazione AWS non dice né che serve né che non serve al proxy; resta nel piano come "da verificare in prova" (punto 3.2 corretto).
 > - Il PNG/SVG del diagramma va ri-esportato da draw.io: il `.drawio` è aggiornato, le immagini no.
 > - La seconda pagina del `.drawio` (`_OLD_OBSOLETE`) è il vecchio schema logico, ignorarla.
+> - La tabella dei ruoli della sezione 5 cita ancora EventBridge e la "Notification Lambda": la lista aggiornata (SNS, Mailer Lambda, HTTP API) è in `04-review-approfondita.md`.
 
 Revisione di `main` (commit `8a3ccba`): `architecture.md`, `problems.md`, `am-management/`, `diagrams/updated.drawio`.
 Giudizio generale: **l'impianto è sensato e sopra la media per un progetto ITS**. Serverless, multi-AZ, DB privato, IAM documentato con criterio. I problemi sono pochi ma alcuni vanno sistemati prima della presentazione, perché il professore li noterà.

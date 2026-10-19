@@ -195,7 +195,7 @@ Per questo progetto l'**HTTP API** è la scelta di default; la REST serve se vol
 - Property / User / Offers / Files Lambda: business logic, router interno (stile controller).
 - **Presigned Lambda**: controlla sul DB i diritti dell'utente e firma il presigned POST per S3 (la firma è locale, non chiama S3); sta in VPC.
 - **Mailer Lambda**: fuori VPC; consuma SQS e chiama SES.
-- (Eventuale Lambda Authorizer.)
+- Nessuna Lambda Authorizer: basta l'authorizer JWT nativo dell'HTTP API.
 
 **Connessione al DB da Lambda: il problema.** Ogni istanza apre la sua connessione; con 200 invocazioni concorrenti si hanno 200 connessioni e PostgreSQL ha un limite (`max_connections`). → **RDS Proxy**. Inoltre: apri la connessione **fuori** dall'handler per riusarla.
 
@@ -309,7 +309,7 @@ Il progetto usa le chiavi di default; la CMK è una scelta consapevole (e il fil
 
 **SES.** Servizio di invio email (API o SMTP). Concetti: **identità verificata** (email o dominio, con DKIM/SPF/DMARC), **sandbox** (limiti e solo destinatari verificati finché non chiedi la produzione), reputazione (bounce/complaint), **configuration set**. Disponibile a Milano.
 
-**Perché questa catena?** La richiesta dell'utente non aspetta l'invio email (disaccoppiamento); se SES è lento o giù, la coda trattiene i messaggi (resilienza); il picco di eventi viene assorbito (buffering). EventBridge aggiunge la possibilità di più consumer in futuro.
+**Perché questa catena?** La richiesta dell'utente non aspetta l'invio email (disaccoppiamento); se SES è lento o giù, la coda trattiene i messaggi (resilienza); il picco di eventi viene assorbito (buffering). Il topic SNS aggiunge la possibilità di più consumer in futuro.
 
 **IAM.** Lambda produttrici: `sns:Publish` sul topic. **Queue policy** sulla coda che permette a `sns.amazonaws.com` di scrivere, limitata al topic con `aws:SourceArn`. La Mailer Lambda: `sqs:ReceiveMessage/DeleteMessage/GetQueueAttributes` + `ses:SendEmail`.
 

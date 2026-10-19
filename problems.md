@@ -20,7 +20,7 @@ Se un giorno servisse un NAT, allora si aggiunge una subnet pubblica per AZ.
 
 **Decisione:** le lambda nella VPC non chiamano Cognito (l'*API Gateway* valida i token da sé),
 quindi il PrivateLink per Cognito non serve. PrivateLink serve invece, come *interface endpoint*,
-per i servizi AWS che le lambda nella VPC raggiungono: SNS (e, se necessario, Secrets Manager).
+per i servizi AWS raggiunti dalla VPC: SNS per le lambda e, se necessario, Secrets Manager per l'*RDS Proxy*.
 
 ### È meglio inserire un NAT per permettere chiamate di api esterne alla nostra rete?
 
