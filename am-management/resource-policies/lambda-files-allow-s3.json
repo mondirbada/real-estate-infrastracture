@@ -1,0 +1,23 @@
+{
+  "Version": "2012-10-17",
+  "Id": "default",
+  "Statement": [
+    {
+      "Sid": "AllowFilesBucketNotifications",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "s3.amazonaws.com"
+      },
+      "Action": "lambda:InvokeFunction",
+      "Resource": "arn:aws:lambda:eu-south-1:<ACCOUNT_ID>:function:real-estate-prod-files",
+      "Condition": {
+        "ArnLike": {
+          "AWS:SourceArn": "arn:aws:s3:::real-estate-prod-files-<SUFFIX>"
+        },
+        "StringEquals": {
+          "AWS:SourceAccount": "<ACCOUNT_ID>"
+        }
+      }
+    }
+  ]
+}

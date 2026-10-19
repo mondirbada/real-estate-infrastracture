@@ -1,0 +1,26 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ConsumeNotificationQueue",
+      "Effect": "Allow",
+      "Action": [
+        "sqs:ReceiveMessage",
+        "sqs:DeleteMessage",
+        "sqs:GetQueueAttributes"
+      ],
+      "Resource": "arn:aws:sqs:eu-south-1:<ACCOUNT_ID>:real-estate-prod-notifications-queue"
+    },
+    {
+      "Sid": "SendEmailFromProjectAddressOnly",
+      "Effect": "Allow",
+      "Action": "ses:SendEmail",
+      "Resource": "arn:aws:ses:eu-south-1:<ACCOUNT_ID>:identity/*",
+      "Condition": {
+        "StringEquals": {
+          "ses:FromAddress": "<MAIL_FROM>"
+        }
+      }
+    }
+  ]
+}

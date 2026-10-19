@@ -128,7 +128,7 @@ Convenzione nomi proposta: `real-estate-<env>-<componente>-<scopo>`.
 | # | Chi | Meccanismo | Trust / Principal | Permessi chiave |
 | --- | --- | --- | --- | --- |
 | 1 | **Deploy** (voi/CI) | ruolo/utente con credenziali temporanee | l'identità del team | creare risorse, `iam:PassRole` sui ruoli sotto |
-| 2 | **RDS Proxy** → `rds-proxy-secrets-role` | **ruolo** (già nel repo) | `rds.amazonaws.com` | `secretsmanager:GetSecretValue` sui soli secret app; `kms:Decrypt` se CMK |
+| 2 | **RDS Proxy** → `real-estate-prod-rds-proxy-secrets-role` | **ruolo** (già nel repo) | `rds.amazonaws.com` | `secretsmanager:GetSecretValue` sui soli secret app; `kms:Decrypt` se CMK |
 | 3 | **Aurora** | service-linked role `AWSServiceRoleForRDS` | gestita da AWS | `AmazonRDSServiceRolePolicy` |
 | 4 | **Lambda con DB** (Property/User/Offers/Files) | **execution role** per funzione | `lambda.amazonaws.com` | `AWSLambdaBasicExecutionRole`, `AWSLambdaVPCAccessExecutionRole`, `rds-db:connect` sul proxy+utente, `sns:Publish` sul topic |
 | 5 | **Presigned Lambda** (in VPC) | execution role | `lambda.amazonaws.com` | log + VPC + `rds-db:connect` + `s3:PutObject` su `arn:…:bucket-file/prefisso/*` |
@@ -161,7 +161,7 @@ Il repo copre **2, 3 e (in parte) 4**. Il resto è ciò che dovete scrivere/spie
 { "Action": "secretsmanager:GetSecretValue",
   "Resource": ["<APPLICATION_SECRET_ARN>"] }
 ```
-Allegata al ruolo `rds-proxy-secrets-role`. Elenca **solo** i secret dei vostri utenti applicativi (con l'ARN completo e il suffisso casuale `-AbCdEf`). Non include il secret master.
+Allegata al ruolo `real-estate-prod-rds-proxy-secrets-role`. Elenca **solo** i secret dei vostri utenti applicativi (con l'ARN completo e il suffisso casuale `-AbCdEf`). Non include il secret master.
 
 ### 6.3 `rds-proxy-decrypt-secrets.json` — solo se usate una CMK
 `kms:Decrypt` sulla chiave, con `Condition: kms:ViaService = secretsmanager.eu-south-1.amazonaws.com`: il ruolo può decifrare **solo** tramite Secrets Manager, non usare la chiave per altro. Ricorda: anche la **key policy** della CMK deve ammettere il ruolo.
@@ -173,7 +173,7 @@ Principal `rds.amazonaws.com`: *il servizio RDS (proxy) può assumere il ruolo*.
 ```
 Lambda  --(1: assume execution role: trust lambda.amazonaws.com)-->  credenziali temporanee
 Lambda  --(2: token IAM firmato SigV4, rds-db:connect)-->  RDS Proxy
-RDS Proxy --(3: assume rds-proxy-secrets-role: trust rds.amazonaws.com)--> credenziali temporanee
+RDS Proxy --(3: assume real-estate-prod-rds-proxy-secrets-role: trust rds.amazonaws.com)--> credenziali temporanee
 RDS Proxy --(4: GetSecretValue)--> Secrets Manager  → username/password
 RDS Proxy --(5: password PostgreSQL)--> Aurora
 ```

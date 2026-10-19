@@ -38,10 +38,37 @@ della VPC. Le altre, come la *Mailer*, stanno fuori: meno cold start, meno endpo
 gli identificativi reali (ID account, ID del proxy, ARN dei secret) restano segnaposto `<...>`
 nei file in Git e si sostituiscono al provisioning.
 
+### Come si cancella o modifica un account, se le lambda nella VPC non raggiungono Cognito?
+
+**Decisione:** lo fa il frontend direttamente con *Cognito* (`UpdateUserAttributes`, `DeleteUser`), con
+l'access token dell'utente. La lambda *Users* gestisce solo i dati nel database: `PUT /users/me` dopo ogni
+login crea o aggiorna la riga con `sub` ed `email` del token, `DELETE /users/me` cancella i dati prima che
+il frontend cancelli l'account *Cognito*.
+
+### Come sa il database che un upload diretto su S3 è andato a buon fine?
+
+**Decisione:** una notifica *S3* `ObjectCreated` sul prefisso `uploads/` invoca la lambda *Files*, che
+registra il file nel database. Per cancellare i file la lambda *Files* usa un *gateway endpoint* S3
+(gratuito), che quindi entra nel piano.
+
+### I file caricati dagli utenti sono pubblici o privati?
+
+**Decisione:** pubblici, letti tramite la seconda distribuzione *CloudFront* (OAC); il bucket resta privato.
+
+### Quale token manda il frontend all'API?
+
+**Decisione:** l'ID token, perché contiene l'email (serve nel database per le notifiche) e i gruppi.
+L'authorizer JWT ne controlla issuer e audience.
+
 ## Aperto
 
 - **Endpoint di Secrets Manager:** da verificare alla creazione del proxy se serve (vedi `architecture.md`).
 - **Alternativa al Secrets Manager:** *RDS Proxy* supporta anche l'autenticazione IAM end-to-end
   (`DefaultAuthScheme=IAM_AUTH`), che elimina secret, endpoint e permessi KMS. Per ora scelto il
   modello con secret perché più comune; da riconsiderare se si vuole semplificare.
-- **Nomi dei ruoli delle lambda:** i `_to_do` nel diagramma vanno sostituiti con i nomi dei ruoli.
+- **Nomi dei ruoli nel diagramma:** i nomi sono definiti in `am-management/` e usati in `diagrams/real-estate-v2.drawio`;
+  in `diagrams/updated.drawio` restano i `_to_do`.
+- **Uso della reader di Aurora:** oggi serve solo per il failover (l'endpoint di default del proxy va al
+  writer). Se si vogliono distribuire le letture, serve un endpoint di sola lettura del proxy.
+- **File di un immobile cancellato:** la riga sparisce dal database ma gli oggetti restano su *S3*.
+  Per il progetto è accettato; sviluppo futuro: un evento che li fa cancellare alla lambda *Files*.

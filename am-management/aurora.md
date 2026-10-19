@@ -14,7 +14,7 @@ AWS `AmazonRDSServiceRolePolicy` e trust verso `rds.amazonaws.com`.
 Il ruolo è gestito da AWS: verificare che esista o che possa essere creato durante
 il provisioning. Non creare una copia personalizzata della sua policy o della trust.
 
-Il ruolo `rds-proxy-secrets-role` va associato al proxy, non alle due istanze Aurora.
+Il ruolo `real-estate-prod-rds-proxy-secrets-role` va associato al proxy, non alle due istanze Aurora.
 
 ## Accesso al database
 

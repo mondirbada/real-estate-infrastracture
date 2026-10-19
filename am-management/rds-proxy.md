@@ -2,7 +2,7 @@
 
 ## Ruolo del proxy
 
-Nome proposto: `rds-proxy-secrets-role`.
+Nome proposto: `real-estate-prod-rds-proxy-secrets-role`.
 
 - Trust: [`rds-proxy.json`](trust-relationships/rds-proxy.json).
 - Permessi: [`rds-proxy-read-secrets.json`](policies/rds-proxy-read-secrets.json).

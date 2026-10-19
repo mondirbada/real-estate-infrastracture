@@ -1,0 +1,5 @@
+{
+  "MessageRetentionPeriod": "1209600",
+  "SqsManagedSseEnabled": "true",
+  "RedriveAllowPolicy": "{\"redrivePermission\": \"byQueue\", \"sourceQueueArns\": [\"arn:aws:sqs:eu-south-1:<ACCOUNT_ID>:real-estate-prod-notifications-queue\"]}"
+}

@@ -1,0 +1,24 @@
+{
+  "expiresInSeconds": 300,
+  "key": "uploads/<propertyId>/<uuid>.<ext>",
+  "conditions": [
+    {
+      "bucket": "real-estate-prod-files-<SUFFIX>"
+    },
+    [
+      "eq",
+      "$key",
+      "uploads/<propertyId>/<uuid>.<ext>"
+    ],
+    [
+      "starts-with",
+      "$Content-Type",
+      "image/"
+    ],
+    [
+      "content-length-range",
+      1,
+      10485760
+    ]
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "Version": "2012-10-17",
+  "Id": "default",
+  "Statement": [
+    {
+      "Sid": "AllowHttpApiInvoke",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "apigateway.amazonaws.com"
+      },
+      "Action": "lambda:InvokeFunction",
+      "Resource": "arn:aws:lambda:eu-south-1:<ACCOUNT_ID>:function:<FUNCTION_NAME>",
+      "Condition": {
+        "ArnLike": {
+          "AWS:SourceArn": "arn:aws:execute-api:eu-south-1:<ACCOUNT_ID>:<API_ID>/*"
+        }
+      }
+    }
+  ]
+}

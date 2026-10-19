@@ -1,0 +1,17 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ConnectToProxyAsPresignedUser",
+      "Effect": "Allow",
+      "Action": "rds-db:connect",
+      "Resource": "arn:aws:rds-db:eu-south-1:<ACCOUNT_ID>:dbuser:<PROXY_RESOURCE_ID>/presigned_user"
+    },
+    {
+      "Sid": "SignUploadsUnderUploadsPrefix",
+      "Effect": "Allow",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::real-estate-prod-files-<SUFFIX>/uploads/*"
+    }
+  ]
+}

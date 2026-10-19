@@ -1,0 +1,17 @@
+{
+  "CORSRules": [
+    {
+      "ID": "AllowPresignedPostFromSite",
+      "AllowedOrigins": [
+        "https://<SITE_DOMAIN>"
+      ],
+      "AllowedMethods": [
+        "POST"
+      ],
+      "AllowedHeaders": [
+        "*"
+      ],
+      "MaxAgeSeconds": 3000
+    }
+  ]
+}

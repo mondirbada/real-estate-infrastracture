@@ -1,0 +1,6 @@
+{
+  "VisibilityTimeout": "180",
+  "MessageRetentionPeriod": "345600",
+  "SqsManagedSseEnabled": "true",
+  "RedrivePolicy": "{\"deadLetterTargetArn\": \"arn:aws:sqs:eu-south-1:<ACCOUNT_ID>:real-estate-prod-notifications-dlq\", \"maxReceiveCount\": \"5\"}"
+}

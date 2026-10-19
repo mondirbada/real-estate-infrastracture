@@ -1,0 +1,16 @@
+{
+  "AllowOrigins": [
+    "https://<SITE_DOMAIN>"
+  ],
+  "AllowMethods": [
+    "GET",
+    "POST",
+    "PUT",
+    "DELETE"
+  ],
+  "AllowHeaders": [
+    "authorization",
+    "content-type"
+  ],
+  "MaxAge": 3600
+}

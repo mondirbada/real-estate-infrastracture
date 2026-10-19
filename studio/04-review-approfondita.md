@@ -5,6 +5,17 @@ Letti: `architecture.md`, `problems.md`, `am-management/` (tutto), `diagrams/upd
 e il PNG esportato, `studio/01-03`. Dove serviva ho controllato la documentazione AWS: la sezione 8 dice cosa ho
 verificato e cosa no.
 
+> **Aggiornamento 2026-10-19, dopo le decisioni di Matteo.**
+> - **Applicato** in `architecture.md` e `problems.md`: gestione dell'account dal frontend con Cognito (F1), notifica S3 verso
+>   la Files Lambda più gateway endpoint S3 (F2), file degli utenti **pubblici** tramite CloudFront (N5), CORS (N3),
+>   cifratura (N4), DNS privato degli endpoint (N2), CIDR (F5), tabella dei security group (N1), route dell'HTTP API.
+>   Il frontend manda l'**ID token**, perché serve l'email nel DB.
+> - **Scritti** in `am-management/` tutti i ruoli, le policy e le resource policy della sezione 7 (README, `lambda.md`,
+>   `api-gateway.md`, `s3-cloudfront.md`, `notifications.md`, `vpc-endpoints.md`), più le configurazioni in `config/`.
+>   Il ruolo del proxy è stato rinominato `real-estate-prod-rds-proxy-secrets-role` (C5).
+> - **Diagramma nuovo** da confrontare con `updated.drawio`: `diagrams/real-estate-v2.drawio`, che risolve C1-C6.
+> - Restano aperti: endpoint di Secrets Manager (F4), uso della reader (F3), file di un immobile cancellato.
+
 ## Riassunto
 
 **Il progetto sta in piedi.** Tutti i servizi usati esistono a Milano (`eu-south-1`). L'architettura è serverless, con
