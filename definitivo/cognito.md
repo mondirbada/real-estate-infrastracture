@@ -29,6 +29,14 @@ presigned POST ([lambda-presigned.md](lambda-presigned.md)).
   controllo del ruolo.
 - **App client** della SPA: client pubblico, **senza client secret** (il codice della SPA è leggibile da chiunque); per
   le SPA il flusso consigliato è l'authorization code con **PKCE**. Il suo ID è l'audience controllata dall'authorizer.
+- **Scope consentiti** dell'app client: `openid`, `email`, `aws.cognito.signin.user.admin`. La SPA li chiede tutti e tre
+  nel parametro `scope` del login. Il terzo serve perché l'access token possa chiamare le API di Cognito sull'utente
+  stesso (`DeleteUser`, `UpdateUserAttributes`, `ChangePassword`, `GetUser`): con l'authorization code non c'è se non
+  lo si chiede ([più sotto](#cancellazione-dellaccount)).
+- **Permessi di scrittura degli attributi** dell'app client: solo quelli che l'utente può cambiare da sé (per esempio
+  `email`, `name`), necessari a `UpdateUserAttributes`.
+- **Durata dei token**: ID e access token 30 minuti (default 60), refresh token come da default. Più corta è, meno
+  dura un token rubato o un token di un account appena cancellato.
 - Nessun trigger Lambda: la riga dell'utente nel database la crea `PUT /users/me` ([lambda-users.md](lambda-users.md)).
 
 ### I token
@@ -65,9 +73,31 @@ Cognito**, con le API pubbliche autorizzate dall'access token dell'utente (`Sign
 `DeleteUser`). Così le Lambda, che stanno in una VPC senza accesso a Internet, non devono mai chiamare Cognito.
 
 - Dopo ogni login la SPA chiama `PUT /users/me`: la Users Lambda crea o aggiorna la riga con `sub` ed `email` del token.
-- Per cancellare l'account la SPA chiama prima `DELETE /users/me` (la Lambda cancella o anonimizza i dati applicativi)
-  e poi `DeleteUser`. Se il secondo passo fallisce l'account esiste ancora e l'utente può ripetere la cancellazione; se
-  intanto rientra, `PUT /users/me` gli ricrea un profilo vuoto.
+- Per cancellare l'account: vedi [Cancellazione dell'account](#cancellazione-dellaccount).
+
+### Cancellazione dell'account
+
+`DeleteUser` è l'API con cui un utente cancella **il proprio** account: non usa IAM né firme AWS, riceve solo l'access
+token e cancella l'utente a cui il token appartiene. La SPA la chiama con l'SDK (`DeleteUserCommand`) verso
+`cognito-idp.eu-south-1.amazonaws.com`. Funziona solo se l'access token ha lo scope `aws.cognito.signin.user.admin`
+(vedi la configurazione dell'app client); senza, Cognito risponde `NotAuthorizedException`.
+
+Sequenza nella SPA:
+
+1. **Conferma con un nuovo login.** `DeleteUser` non chiede la password: chi avesse rubato un access token valido potrebbe
+   cancellare l'account. Prima di un'operazione irreversibile la SPA fa rifare il login, così il token è appena emesso.
+2. **`DELETE /users/me`**: la Users Lambda cancella o anonimizza i dati applicativi.
+3. **`DeleteUser`** su Cognito con l'access token.
+4. **Logout**: la SPA toglie dalla memoria tutti i token.
+
+Perché prima il database e poi Cognito: se fallisce `DeleteUser` l'account esiste ancora, l'utente rientra e riprova
+(se intanto chiama `PUT /users/me` gli si ricrea un profilo vuoto, che la nuova cancellazione toglie). Con l'ordine
+inverso, se fallisse `DELETE /users/me` l'utente non potrebbe più fare login per riprovare e i suoi dati resterebbero nel
+database senza nessuno che li possa cancellare.
+
+Limite: `DeleteUser` invalida il refresh token, ma ID e access token già emessi restano validi fino alla scadenza.
+L'authorizer di API Gateway controlla solo firma e scadenza, non se l'utente esiste ancora. Per questo la SPA butta i
+token al passo 4 e la loro durata è di 30 minuti.
 
 Alternative scartate: chiamare `AdminDeleteUser` dalla Users Lambda (dalla VPC non c'è strada: servirebbe un interface
 endpoint `cognito-idp`, che esiste ma ha limiti, oppure un evento gestito da una Lambda fuori dalla VPC).
@@ -88,11 +118,6 @@ che non usiamo. Vedi [iam.md](iam.md#cosa-non-ha-bisogno-di-ruoli).
 - I gruppi del token decidono il **ruolo**; l'**ownership** (l'immobile è tuo?) la controllano le Lambda nel database
   ([api-gateway.md](api-gateway.md#autorizzazione-su-due-livelli)).
 - Cognito può usare SES per le email di verifica, con le quote di default.
-
-## Punti aperti
-
-- Che `DeleteUser` e `UpdateUserAttributes` funzionino dal browser con l'access token dipende dagli scope dell'app
-  client: va verificato alla configurazione ([decisioni-e-punti-aperti.md](decisioni-e-punti-aperti.md#punti-aperti)).
 
 ## Riferimenti
 
@@ -125,4 +150,13 @@ che non usiamo. Vedi [iam.md](iam.md#cosa-non-ha-bisogno-di-ruoli).
 > Perché il suo codice è pubblico nel browser: un secret non sarebbe segreto. Si usa un client pubblico con PKCE.
 >
 > **Come si cancella un account se le Lambda non raggiungono Cognito?**
-> Lo fa la SPA: prima `DELETE /users/me` per i dati nel database, poi `DeleteUser` su Cognito con l'access token.
+> Lo fa la SPA: dopo un nuovo login di conferma, prima `DELETE /users/me` per i dati nel database, poi `DeleteUser` su
+> Cognito con l'access token, poi logout.
+>
+> **Perché serve lo scope `aws.cognito.signin.user.admin`?**
+> È lo scope che permette all'access token di agire sull'utente stesso tramite le API di Cognito. Con il login tramite
+> authorization code arriva solo se l'app client lo consente e la SPA lo chiede; senza, `DeleteUser` viene rifiutata.
+>
+> **Dopo `DeleteUser` il token funziona ancora con la nostra API?**
+> Sì, fino alla scadenza: l'authorizer verifica firma e scadenza senza chiedere a Cognito. Per questo la SPA cancella i
+> token subito e la durata è corta (30 minuti).

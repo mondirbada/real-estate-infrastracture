@@ -42,7 +42,7 @@ futuri. Ogni riga rimanda al file del servizio che la spiega per intero.
 | **Il frontend manda all'HTTP API l'ID token** (decisione definitiva) | Le Lambda hanno bisogno di `email` e `sub`, che l'ID token contiene e l'access token no; con l'access token l'email andrebbe presa dal body (falsificabile) o chiesta a Cognito con `GetUser`, irraggiungibile dalla VPC senza un endpoint in più; una Pre Token Generation Lambda per mettere `email` nell'access token complicherebbe il progetto; non usiamo scope OAuth né resource server. Limite: la buona pratica OIDC vuole l'access token con gli scope per le API; se servissero permessi a scope si passerebbe all'access token, e l'authorizer accetta tutti e due (`aud` nell'ID token, `client_id` nell'access token), quindi sarebbe solo configurazione | [cognito.md](cognito.md#decisione-allapi-va-lid-token) |
 | Autorizzazione su due livelli: ruolo (gruppi Cognito) e ownership (nella Lambda, con il DB) | L'authorizer sa chi sei; se la risorsa è tua lo sa solo il database | [api-gateway.md](api-gateway.md#autorizzazione-su-due-livelli) |
 | Gruppi `buyer`, `agent`, `admin` nel user pool; solo user pool, niente identity pool | I ruoli applicativi arrivano nel token; gli upload usano il presigned POST, non credenziali AWS nel browser | [cognito.md](cognito.md) |
-| **Account modificato e cancellato dal frontend direttamente con Cognito** | Le Lambda nella VPC non raggiungono Cognito. `PUT /users/me` dopo ogni login crea o aggiorna la riga; `DELETE /users/me` prima di `DeleteUser` | [cognito.md](cognito.md#gestione-dellaccount-dal-frontend), [lambda-users.md](lambda-users.md) |
+| **Account modificato e cancellato dal frontend direttamente con Cognito** | Le Lambda nella VPC non raggiungono Cognito. `PUT /users/me` dopo ogni login crea o aggiorna la riga; nuovo login di conferma, `DELETE /users/me`, poi `DeleteUser` (scope `aws.cognito.signin.user.admin` sull'app client), poi logout | [cognito.md](cognito.md#cancellazione-dellaccount), [lambda-users.md](lambda-users.md) |
 | Route esplicite, lettura degli annunci pubblica | Il preflight `OPTIONS` lo gestisce il CORS senza authorizer; un visitatore vede gli annunci | [api-gateway.md](api-gateway.md#route) |
 | CORS sull'HTTP API e sul bucket dei file | Il sito chiama due origini diverse | [api-gateway.md](api-gateway.md#cors), [s3.md](s3.md#cors-del-bucket-dei-file) |
 | Throttling sullo stage | Difesa dagli abusi; WAF non si associa a un'HTTP API | [api-gateway.md](api-gateway.md#throttling) |
@@ -122,7 +122,6 @@ futuri. Ogni riga rimanda al file del servizio che la spiega per intero.
 | --- | --- | --- |
 | **Endpoint di Secrets Manager per il proxy**: serve? | La documentazione AWS non lo dice. Si verifica alla creazione del proxy: se il target risulta `AVAILABLE` senza endpoint, lo si toglie (e la regola `sg-rds-proxy` → `sg-endpoint-secrets-manager`) risparmiando | [vpc-endpoints.md](vpc-endpoints.md#punti-aperti) |
 | **Uso della reader di Aurora** | Oggi solo failover (l'endpoint di default del proxy va al writer). Per distribuire le letture serve un endpoint di sola lettura del proxy | [aurora.md](aurora.md#punti-aperti) |
-| `DeleteUser` e `UpdateUserAttributes` dal browser con l'access token | Sono API pubbliche, ma dipendono dagli scope dell'app client: da verificare in configurazione | [cognito.md](cognito.md#punti-aperti) |
 | Formulazione "per sicurezza" sul proxy | All'orale può suonare come "sicurezza informatica" e far chiedere "quale?". Proposta, non applicata (scelta di parole del team): "per robustezza: le Lambda possono moltiplicare le connessioni, e il proxy ci dà anche l'autenticazione IAM e un failover più rapido" | [rds-proxy.md](rds-proxy.md#perché-cè) |
 | Diagramma valido | La versione di riferimento è [`real-estate-v2.drawio`](diagrammi/real-estate-v2.drawio), con tutti i flussi e i nomi dei ruoli; lo schema precedente di Tommaso (`updated.drawio`, con i ruoli ancora `_to_do`, senza API Gateway né frecce dei flussi) è in archivio. Il team deve confermare la v2 aprendola in draw.io; quando la si ritocca, allineare i nomi abbreviati (bucket, coda, DLQ) e il riquadro IAM che rimanda ancora ad `am-management/`, e aggiungere la freccia Property Lambda → gateway S3 per la cancellazione dei file di un immobile ([README](README.md#diagramma)) | [README](README.md#diagramma) |
 | Prove reali | Una connessione al proxy e il comportamento durante il failover del writer vanno verificati creando le risorse | [iam.md](iam.md#verifica-prima-delluso) |
@@ -143,8 +142,7 @@ Verificato anche sulla documentazione AWS: il ruolo del proxy (trust, `GetSecret
 `kms:ViaService`) è identico all'esempio ufficiale; prerequisiti di rete del proxy (2 subnet in AZ diverse, 10 IP
 liberi); nelle HTTP API la cache della Lambda Authorizer è facoltativa e per default vale per tutte le route, e
 l'access logging non richiede il ruolo CloudWatch dell'account; SNS non consegna a code cifrate con `aws/sqs`.
-Non verificato puntualmente: che WAF non si associ alle HTTP API; l'uso di `DeleteUser` e `UpdateUserAttributes` dal
-browser; il bisogno dell'endpoint di Secrets Manager. Nessuna risorsa è stata creata su un account AWS.
+Non verificato puntualmente: che WAF non si associ alle HTTP API; il bisogno dell'endpoint di Secrets Manager. Nessuna risorsa è stata creata su un account AWS.
 
 ## Sviluppi futuri
 
