@@ -12,6 +12,23 @@
       "Effect": "Allow",
       "Action": "sns:Publish",
       "Resource": "arn:aws:sns:eu-south-1:<ACCOUNT_ID>:real-estate-prod-notifications"
+    },
+    {
+      "Sid": "ListFilesOfDeletedProperty",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::real-estate-prod-files-<SUFFIX>",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": "uploads/*"
+        }
+      }
+    },
+    {
+      "Sid": "DeleteFilesOfDeletedProperty",
+      "Effect": "Allow",
+      "Action": "s3:DeleteObject",
+      "Resource": "arn:aws:s3:::real-estate-prod-files-<SUFFIX>/uploads/*"
     }
   ]
 }

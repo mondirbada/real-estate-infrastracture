@@ -25,7 +25,8 @@ icona del casco = ruolo IAM (execution role).
 Nel diagramma alcuni nomi sono abbreviati: i bucket senza `-<SUFFIX>`, coda e DLQ senza il prefisso `real-estate-prod-`
 (i nomi completi sono `real-estate-prod-notifications-queue` e `real-estate-prod-notifications-dlq`), le Lambda con il
 nome breve (Property Lambda = `real-estate-prod-property`). Il riquadro IAM rimanda ancora ad `am-management/`, che ora è
-in archivio: ruoli e policy sono in [iam.md](iam.md).
+in archivio: ruoli e policy sono in [iam.md](iam.md). Manca la freccia Property Lambda → gateway S3, usata quando si
+cancella un immobile per togliere i suoi file ([lambda-property.md](lambda-property.md#cancellazione-di-un-immobile)).
 
 ## Mappa dei file
 

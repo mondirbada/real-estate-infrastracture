@@ -20,7 +20,7 @@ Prima di lei: la [Presigned Lambda](lambda-presigned.md) firma l'upload. Regole 
 
 | Evento | Accesso | Cosa fa |
 | --- | --- | --- |
-| Notifica S3 `ObjectCreated` su `uploads/` | solo S3 del nostro bucket | Registra il file nel database: chiave, immobile (dalla chiave `uploads/<propertyId>/...`), dimensione. I dati arrivano nell'evento |
+| Notifica S3 `ObjectCreated` su `uploads/` | solo S3 del nostro bucket | Registra il file nel database: chiave, immobile (dalla chiave `uploads/<propertyId>/...`), dimensione. I dati arrivano nell'evento. Se l'immobile non esiste più (upload finito dopo la sua cancellazione) non registra niente e cancella l'oggetto |
 | `GET /properties/{id}/files` | pubblica | Elenco dei file dell'immobile; il browser li scarica dalla distribuzione CloudFront dei file |
 | `DELETE /files/{id}` | JWT, proprietario | Controlla l'ownership, toglie la riga dal database e cancella l'oggetto su S3 |
 
@@ -90,7 +90,8 @@ File: [`iam/policies/lambda-files.json`](iam/policies/lambda-files.json)
 ```
 
 - `ConnectToProxyAsFilesUser`: entrare nel proxy come `files_user` per registrare e cancellare i metadati.
-- `DeleteUploadedFiles`: `s3:DeleteObject` solo su `uploads/*`; la chiamata passa dal gateway endpoint S3.
+- `DeleteUploadedFiles`: `s3:DeleteObject` solo su `uploads/*`, per `DELETE /files/{id}` e per gli upload arrivati
+  dopo la cancellazione dell'immobile; la chiamata passa dal gateway endpoint S3.
 - **Niente `s3:GetObject`**: chiave e dimensione arrivano nell'evento della notifica S3.
 - **Niente `sns:Publish`**: non pubblica eventi di notifica.
 
@@ -143,11 +144,11 @@ File: [`iam/resource-policies/lambda-files-allow-s3.json`](iam/resource-policies
 - Per **cancellare** un oggetto invece la chiamata parte dalla Lambda: serve il **gateway endpoint S3** (gratuito), con
   la rotta nelle route table e l'uscita 443 verso la prefix list di S3 in `sg-lambda-internal`.
 
-## Punti aperti
+## File di un immobile cancellato
 
-- **File di un immobile cancellato:** la riga sparisce dal database ma gli oggetti restano su S3. Accettato per il
-  progetto; sviluppo futuro: un evento che fa cancellare i file a questa Lambda
-  ([decisioni-e-punti-aperti.md](decisioni-e-punti-aperti.md#punti-aperti)).
+Non li cancella questa Lambda: lo fa la [Property Lambda](lambda-property.md#cancellazione-di-un-immobile) dentro
+`DELETE /properties/{id}`, svuotando il prefisso `uploads/<propertyId>/`. Qui resta solo il caso di un upload che
+finisce dopo la cancellazione: la registrazione fallisce perché l'immobile non c'è, e la Lambda cancella l'oggetto.
 
 ## All'orale
 
@@ -162,6 +163,10 @@ File: [`iam/resource-policies/lambda-files-allow-s3.json`](iam/resource-policies
 > **La Lambda è in VPC: come la raggiunge S3?**
 > Non la raggiunge in rete: la invoca il servizio Lambda. Il gateway endpoint serve solo quando è la Lambda a chiamare
 > S3, per cancellare.
+>
+> **Chi cancella i file quando si cancella un immobile?**
+> La Property Lambda, nella stessa richiesta `DELETE /properties/{id}`. Questa Lambda chiude solo il buco di un upload
+> che arriva dopo: l'immobile non esiste, il file non si registra e viene cancellato.
 >
 > **Perché non ha `s3:GetObject`?**
 > Non legge i file: chiave e dimensione sono nell'evento. Least privilege.

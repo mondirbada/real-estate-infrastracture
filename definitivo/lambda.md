@@ -62,7 +62,7 @@ Cosa raggiunge ogni Lambda e come:
 | Tutte | credenziali del ruolo, log su CloudWatch | li gestisce il servizio Lambda, non la rete della funzione: nessun endpoint |
 | Property, Users, Offers | SNS | interface endpoint SNS |
 | Presigned | S3 | nessuna chiamata: il presigned POST si firma in locale |
-| Files | S3 (cancellazione) | gateway endpoint S3 |
+| Files, Property | S3 (cancellazione; la Property solo quando cancella un immobile) | gateway endpoint S3 |
 | Users | Cognito | nessuna chiamata: l'account lo gestisce il frontend |
 | Mailer (fuori VPC) | SQS, SES | rete di AWS; la coda la legge il servizio Lambda (event source mapping) |
 
@@ -118,6 +118,7 @@ Cosa concedono le policy del progetto:
 | --- | --- | --- | --- |
 | property, users, offers | `rds-db:connect` | `dbuser:<prx-ID>/<utente>` del proprio utente PostgreSQL | collegarsi al proxy con un token IAM |
 | property, users, offers | `sns:Publish` | topic `real-estate-prod-notifications` | pubblicare gli eventi da notificare via email |
+| property | `s3:ListBucket` con condizione `s3:prefix` = `uploads/*`; `s3:DeleteObject` | bucket dei file; `real-estate-prod-files-<SUFFIX>/uploads/*` | cancellare i file di un immobile cancellato (gateway endpoint S3) |
 | files | `rds-db:connect` | `dbuser:<prx-ID>/files_user` | registrare e cancellare i metadati dei file |
 | files | `s3:DeleteObject` | `real-estate-prod-files-<SUFFIX>/uploads/*` | cancellare un file (passa dal gateway endpoint S3) |
 | presigned | `rds-db:connect` | `dbuser:<prx-ID>/presigned_user` | controllare che l'utente sia il proprietario dell'immobile |

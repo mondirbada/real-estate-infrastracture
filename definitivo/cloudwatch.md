@@ -29,6 +29,7 @@ Allarmi minimi:
 | Messaggi nella DLQ | `ApproximateNumberOfMessagesVisible` di `real-estate-prod-notifications-dlq` > 0 |
 | CPU di Aurora | `CPUUtilization` |
 | Connessioni di Aurora | connessioni al database |
+| Pulizia dei file non riuscita | metric filter sul log group della Property Lambda per `FILES_CLEANUP_FAILED` > 0 ([lambda-property.md](lambda-property.md#cancellazione-di-un-immobile)) |
 
 ## IAM
 

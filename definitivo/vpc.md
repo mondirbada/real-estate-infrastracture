@@ -71,7 +71,7 @@ Catena SG → SG:
 | `sg-rds-proxy` | `sg-rds` | 5432 | il proxy si collega ad Aurora |
 | `sg-lambda-internal` | `sg-endpoint-sns` | 443 | Property, Users, Offers pubblicano su SNS |
 | `sg-rds-proxy` | `sg-endpoint-secrets-manager` | 443 | il proxy legge i secret, se l'endpoint serve (lo usa il proxy, non le Lambda) |
-| `sg-lambda-internal` | prefix list S3 (`pl-...`) | 443 | la Files cancella oggetti tramite il gateway endpoint, che non ha security group |
+| `sg-lambda-internal` | prefix list S3 (`pl-...`) | 443 | Files e Property cancellano oggetti tramite il gateway endpoint, che non ha security group |
 
 Le Lambda **non raggiungono Aurora direttamente**: `sg-rds` accetta solo il proxy.
 

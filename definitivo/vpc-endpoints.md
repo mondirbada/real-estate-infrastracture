@@ -9,7 +9,7 @@ La VPC non ha Internet Gateway né NAT: le Lambda e il proxy raggiungono i servi
 | --- | --- | --- |
 | Interface SNS | [Property](lambda-property.md), [Users](lambda-users.md), [Offers](lambda-offers.md) | [sns.md](sns.md) |
 | Interface Secrets Manager | [RDS Proxy](rds-proxy.md), se ne ha bisogno | [secrets-manager.md](secrets-manager.md) |
-| Gateway S3 | [Files Lambda](lambda-files.md) | [s3.md](s3.md) |
+| Gateway S3 | [Files Lambda](lambda-files.md), [Property Lambda](lambda-property.md) | [s3.md](s3.md) |
 
 Rete e security group: [vpc.md](vpc.md).
 
@@ -26,7 +26,7 @@ Rete e security group: [vpc.md](vpc.md).
 | --- | --- | --- | --- | --- |
 | `com.amazonaws.eu-south-1.sns` | Interface (ENI in subnet A e B) | Property, Users, Offers | `sg-endpoint-sns`: 443 da `sg-lambda-internal` | Private DNS attivo |
 | `com.amazonaws.eu-south-1.secretsmanager` | Interface | RDS Proxy, se ne ha bisogno | `sg-endpoint-secrets-manager`: 443 da `sg-rds-proxy` | Da verificare alla creazione del proxy |
-| `com.amazonaws.eu-south-1.s3` | Gateway (rotta nelle route table delle due subnet) | Files | nessuno (i gateway endpoint non hanno SG) | Gratuito |
+| `com.amazonaws.eu-south-1.s3` | Gateway (rotta nelle route table delle due subnet) | Files, Property | nessuno (i gateway endpoint non hanno SG) | Gratuito |
 
 - **Private DNS**: gli interface endpoint hanno il Private DNS attivo, che richiede `enableDnsSupport` ed
   `enableDnsHostnames` sulla VPC. Così l'SDK chiama `sns.eu-south-1.amazonaws.com` come sempre, e il nome si risolve
@@ -85,7 +85,7 @@ L'endpoint di Secrets Manager e il gateway S3 usano la policy di default.
 | --- | --- | --- |
 | Lambda → endpoint SNS | `sg-endpoint-sns`: 443 da `sg-lambda-internal` | `sns:Publish` nel ruolo; endpoint policy facoltativa |
 | Proxy → endpoint Secrets Manager | `sg-endpoint-secrets-manager`: 443 da `sg-rds-proxy` | `secretsmanager:GetSecretValue` nel ruolo del proxy |
-| Files → gateway S3 | rotta nella route table, uscita 443 verso la prefix list | `s3:DeleteObject` nel ruolo della Files |
+| Files, Property → gateway S3 | rotta nella route table, uscita 443 verso la prefix list | `s3:DeleteObject` nel ruolo della Files; `s3:ListBucket` e `s3:DeleteObject` nel ruolo della Property |
 
 ## Costi
 

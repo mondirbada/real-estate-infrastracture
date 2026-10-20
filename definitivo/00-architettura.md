@@ -83,6 +83,9 @@ Tre idee tengono insieme il progetto:
   ([lambda-property.md](lambda-property.md)).
 - `POST /properties` richiede il gruppo `agent`; `PUT` e `DELETE /properties/{id}` richiedono di essere il
   proprietario dell'immobile o `admin` (ownership con `WHERE id = :id AND owner_id = :sub`).
+- `DELETE /properties/{id}` cancella l'immobile nel database (le righe dei file in cascata) e poi tutti i suoi file su S3
+  sotto `uploads/<propertyId>/`, passando dal gateway endpoint S3
+  ([lambda-property.md](lambda-property.md#cancellazione-di-un-immobile)).
 - Le modifiche rilevanti pubblicano un evento di notifica (flusso 8).
 
 ### 5. Offerte

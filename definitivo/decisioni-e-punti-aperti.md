@@ -99,6 +99,9 @@ futuri. Ogni riga rimanda al file del servizio che la spiega per intero.
 | Identity pool | Non servono credenziali AWS nel browser | Accesso diretto dei client ai servizi AWS |
 | Trigger Cognito per creare la riga utente | `PUT /users/me` basta | — |
 | `AdminDeleteUser` dalla Users Lambda, interface endpoint `cognito-idp` o evento verso una Lambda fuori VPC | Dalla VPC non c'è strada; l'endpoint Cognito esiste ma con limiti | — |
+| Lasciare su S3 i file di un immobile cancellato | Spazio pagato per niente e file ancora raggiungibili da chi ha il link | — |
+| Cancellare i file con un evento SNS → Files Lambda | La Files Lambda non è in ascolto su SNS: servirebbe un'altra coda o un endpoint Lambda. La Property ha già il gateway endpoint S3, gratuito | Se la pulizia diventasse lenta (molti file) e non dovesse pesare sulla richiesta |
+| Lifecycle rule di S3 sui file orfani | Le lifecycle rule lavorano per prefisso o tag ed età, non sanno se l'immobile esiste | Come rete di sicurezza, con un tag messo sui file da cancellare |
 | Conferma dell'upload dal client (`POST /files/confirm`) | Il client può mentire o non chiamare | — |
 | Presigned PUT | Non limita la dimensione | — |
 | File privati con CloudFront signed URL o presigned GET della Files Lambda | I file degli annunci sono pubblici per decisione | Se si aggiungessero documenti privati (contratti, documenti d'identità) |
@@ -119,10 +122,9 @@ futuri. Ogni riga rimanda al file del servizio che la spiega per intero.
 | --- | --- | --- |
 | **Endpoint di Secrets Manager per il proxy**: serve? | La documentazione AWS non lo dice. Si verifica alla creazione del proxy: se il target risulta `AVAILABLE` senza endpoint, lo si toglie (e la regola `sg-rds-proxy` → `sg-endpoint-secrets-manager`) risparmiando | [vpc-endpoints.md](vpc-endpoints.md#punti-aperti) |
 | **Uso della reader di Aurora** | Oggi solo failover (l'endpoint di default del proxy va al writer). Per distribuire le letture serve un endpoint di sola lettura del proxy | [aurora.md](aurora.md#punti-aperti) |
-| **File di un immobile cancellato** | La riga sparisce dal DB ma gli oggetti restano su S3. Accettato per il progetto; sviluppo futuro: un evento che li fa cancellare alla Files Lambda | [lambda-files.md](lambda-files.md#punti-aperti) |
 | `DeleteUser` e `UpdateUserAttributes` dal browser con l'access token | Sono API pubbliche, ma dipendono dagli scope dell'app client: da verificare in configurazione | [cognito.md](cognito.md#punti-aperti) |
 | Formulazione "per sicurezza" sul proxy | All'orale può suonare come "sicurezza informatica" e far chiedere "quale?". Proposta, non applicata (scelta di parole del team): "per robustezza: le Lambda possono moltiplicare le connessioni, e il proxy ci dà anche l'autenticazione IAM e un failover più rapido" | [rds-proxy.md](rds-proxy.md#perché-cè) |
-| Diagramma valido | La versione di riferimento è [`real-estate-v2.drawio`](diagrammi/real-estate-v2.drawio), con tutti i flussi e i nomi dei ruoli; lo schema precedente di Tommaso (`updated.drawio`, con i ruoli ancora `_to_do`, senza API Gateway né frecce dei flussi) è in archivio. Il team deve confermare la v2 aprendola in draw.io; quando la si ritocca, allineare i nomi abbreviati (bucket, coda, DLQ) e il riquadro IAM che rimanda ancora ad `am-management/` ([README](README.md#diagramma)) | [README](README.md#diagramma) |
+| Diagramma valido | La versione di riferimento è [`real-estate-v2.drawio`](diagrammi/real-estate-v2.drawio), con tutti i flussi e i nomi dei ruoli; lo schema precedente di Tommaso (`updated.drawio`, con i ruoli ancora `_to_do`, senza API Gateway né frecce dei flussi) è in archivio. Il team deve confermare la v2 aprendola in draw.io; quando la si ritocca, allineare i nomi abbreviati (bucket, coda, DLQ) e il riquadro IAM che rimanda ancora ad `am-management/`, e aggiungere la freccia Property Lambda → gateway S3 per la cancellazione dei file di un immobile ([README](README.md#diagramma)) | [README](README.md#diagramma) |
 | Prove reali | Una connessione al proxy e il comportamento durante il failover del writer vanno verificati creando le risorse | [iam.md](iam.md#verifica-prima-delluso) |
 | Backup e retention di Aurora | Valori da fissare alla creazione | [aurora.md](aurora.md#punti-aperti) |
 
@@ -147,7 +149,6 @@ browser; il bisogno dell'endpoint di Secrets Manager. Nessuna risorsa è stata c
 ## Sviluppi futuri
 
 - **WAF** davanti all'API, mettendo CloudFront davanti all'HTTP API (WAF è già possibile sulle distribuzioni CloudFront).
-- Evento che fa cancellare alla Files Lambda i file di un immobile cancellato.
 - Endpoint di sola lettura del proxy per usare la reader.
 - **SES in produzione**: richiesta di uscita dalla sandbox e verifica del dominio del mittente (DKIM).
 - Rotazione automatica dei secret con una Lambda di rotazione.
@@ -190,7 +191,7 @@ proxy, endpoint).
 > endpoint. EventBridge serve quando ci sono molti consumer con regole di filtro.
 >
 > **Cosa fareste con più tempo?**
-> WAF davanti all'API, cancellazione dei file degli immobili rimossi, SES in produzione, rotazione dei secret,
+> WAF davanti all'API, SES in produzione, rotazione dei secret,
 > Infrastructure as Code (come un `docker-compose.yml`, ma per tutta l'infrastruttura AWS).
 >
 > **Cosa avete fatto bene, secondo voi?**

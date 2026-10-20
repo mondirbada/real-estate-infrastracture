@@ -114,7 +114,7 @@ Convenzione: `real-estate-<ambiente>-<componente>-<scopo>`. "log" = `AWSLambdaBa
 
 | Ruolo | Chi lo assume (trust) | Permessi | Dettagli |
 | --- | --- | --- | --- |
-| `real-estate-prod-lambda-property-role` | `lambda.amazonaws.com` | log, VPC, [`lambda-property.json`](iam/policies/lambda-property.json): `rds-db:connect` come `property_user`, `sns:Publish` | [lambda-property.md](lambda-property.md) |
+| `real-estate-prod-lambda-property-role` | `lambda.amazonaws.com` | log, VPC, [`lambda-property.json`](iam/policies/lambda-property.json): `rds-db:connect` come `property_user`, `sns:Publish`, `s3:ListBucket` (prefisso `uploads/`) e `s3:DeleteObject` su `uploads/*` | [lambda-property.md](lambda-property.md) |
 | `real-estate-prod-lambda-users-role` | `lambda.amazonaws.com` | log, VPC, [`lambda-users.json`](iam/policies/lambda-users.json): `rds-db:connect` come `users_user`, `sns:Publish` | [lambda-users.md](lambda-users.md) |
 | `real-estate-prod-lambda-offers-role` | `lambda.amazonaws.com` | log, VPC, [`lambda-offers.json`](iam/policies/lambda-offers.json): `rds-db:connect` come `offers_user`, `sns:Publish` | [lambda-offers.md](lambda-offers.md) |
 | `real-estate-prod-lambda-presigned-role` | `lambda.amazonaws.com` | log, VPC, [`lambda-presigned.json`](iam/policies/lambda-presigned.json): `rds-db:connect` come `presigned_user`, `s3:PutObject` su `uploads/*` | [lambda-presigned.md](lambda-presigned.md) |
