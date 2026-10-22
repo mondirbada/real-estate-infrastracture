@@ -1,0 +1,25 @@
+{
+  "AlarmName": "real-estate-prod-notifications-dlq-not-empty",
+  "AlarmDescription": "Almeno un messaggio nella DLQ delle notifiche: un'email non inviata dopo 5 ricezioni. Procedura in sqs.md, sezione Procedura operativa.",
+  "Namespace": "AWS/SQS",
+  "MetricName": "ApproximateNumberOfMessagesVisible",
+  "Dimensions": [
+    {
+      "Name": "QueueName",
+      "Value": "real-estate-prod-notifications-dlq"
+    }
+  ],
+  "Statistic": "Maximum",
+  "Period": 300,
+  "EvaluationPeriods": 1,
+  "DatapointsToAlarm": 1,
+  "Threshold": 0,
+  "ComparisonOperator": "GreaterThanThreshold",
+  "TreatMissingData": "notBreaching",
+  "AlarmActions": [
+    "arn:aws:sns:eu-south-1:<ACCOUNT_ID>:real-estate-prod-ops-alerts"
+  ],
+  "OKActions": [
+    "arn:aws:sns:eu-south-1:<ACCOUNT_ID>:real-estate-prod-ops-alerts"
+  ]
+}

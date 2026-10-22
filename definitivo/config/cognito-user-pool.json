@@ -1,0 +1,22 @@
+{
+  "PoolName": "real-estate-prod-user-pool",
+  "UsernameAttributes": [
+    "email"
+  ],
+  "AutoVerifiedAttributes": [
+    "email"
+  ],
+  "UserAttributeUpdateSettings": {
+    "AttributesRequireVerificationBeforeUpdate": [
+      "email"
+    ]
+  },
+  "Schema": [
+    {
+      "Name": "email",
+      "AttributeDataType": "String",
+      "Required": true,
+      "Mutable": true
+    }
+  ]
+}

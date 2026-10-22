@@ -8,7 +8,7 @@ authorizer nativo, applica CORS e throttling e inoltra ogni richiesta alla Lambd
 
 | Direzione | Con chi | Come | Autorizzato da |
 | --- | --- | --- | --- |
-| Browser → API | SPA servita da [CloudFront](cloudfront.md) | HTTPS, `Authorization: Bearer <ID token>` | authorizer JWT; CORS |
+| Browser → API | SPA servita da [CloudFront](cloudfront.md) | HTTPS, `Authorization: Bearer <access token>` | authorizer JWT; CORS |
 | API ← Cognito | [cognito.md](cognito.md) | issuer e JWKS del user pool | nessun ruolo |
 | API → Lambda | [lambda-property.md](lambda-property.md), [lambda-users.md](lambda-users.md), [lambda-offers.md](lambda-offers.md), [lambda-presigned.md](lambda-presigned.md), [lambda-files.md](lambda-files.md) | invocazione sincrona, *Lambda proxy integration* | resource policy sulla Lambda |
 | API → CloudWatch | [cloudwatch.md](cloudwatch.md) | log di accesso dello stage | basta il log group, nessun ruolo |
@@ -39,17 +39,53 @@ che non usiamo. Il timeout d'integrazione è circa 29 secondi per la REST API e 
 
 ### Authorizer JWT
 
-- Issuer: `https://cognito-idp.eu-south-1.amazonaws.com/<USER_POOL_ID>`.
-- Audience: l'ID dell'app client di Cognito.
-- Valida firma (chiavi pubbliche JWKS del pool), issuer, audience e scadenza **senza chiamare Cognito** a ogni richiesta.
-  Alle Lambda inoltra solo le richieste valide, insieme ai claim (`sub`, `email`, `cognito:groups`).
+La SPA manda l'**access token** di Cognito: `Authorization: Bearer <access token>` (identity source
+`$request.header.Authorization`; il prefisso `Bearer` è accettato).
 
-**Decisione: il token è l'ID token.** Il frontend manda all'HTTP API l'ID token; l'authorizer controlla issuer (il user
-pool) e audience (l'ID dell'app client, che nell'ID token sta in `aud`). Motivi: le Lambda hanno bisogno di `email` e
-`sub`, che l'ID token contiene e l'access token no; con l'access token l'email andrebbe presa dal body (falsificabile) o
-chiesta a Cognito con `GetUser`, irraggiungibile dalla VPC senza un endpoint in più; non usiamo scope OAuth. Il limite
-e il modo per cambiare sono spiegati in [cognito.md](cognito.md#decisione-allapi-va-lid-token): l'authorizer accetta
-anche l'access token (`client_id` invece di `aud`), quindi sarebbe solo configurazione.
+- Issuer: `https://cognito-idp.eu-south-1.amazonaws.com/<USER_POOL_ID>`.
+- Audience: l'ID dell'app client della SPA. L'authorizer confronta l'audience con il claim `aud` se c'è, altrimenti con
+  `client_id`. L'access token di Cognito non ha `aud` (lo avrebbe solo con un *resource binding*, che non usiamo),
+  quindi il controllo avviene su `client_id`.
+- Valida firma (chiavi pubbliche JWKS del pool, tenute in cache da API Gateway), issuer, audience, scadenza (`exp`),
+  `nbf` e `iat` **senza chiamare Cognito** a ogni richiesta. Se un controllo fallisce risponde 401 e la Lambda non parte.
+- **Nessuno scope sulle route**: non usiamo scope personalizzati né resource server. I permessi applicativi stanno nei
+  gruppi.
+
+Alle Lambda inoltra i claim del token in `event.requestContext.authorizer.jwt.claims`. Le Lambda ne usano due:
+
+| Claim | Valore che arriva alla Lambda | Uso |
+| --- | --- | --- |
+| `sub` | `"a1b2c3d4-..."` | chi è l'utente: proprietario, autore dell'offerta, chiave della riga in `users` |
+| `cognito:groups` | una **stringa**, per esempio `"[buyer agent]"`, non un array JSON | controllo del ruolo |
+
+Nella documentazione AWS i claim arrivano alla Lambda come coppie nome-valore di tipo stringa; il formato `"[a b]"` dei
+claim lista è quello che si osserva con le HTTP API, e va verificato alla prima prova. Per questo il controllo del ruolo
+passa da una funzione comune a tutte le Lambda, come un `JwtAuthenticationConverter` in Spring Security:
+
+```javascript
+// Legge identità e gruppi dai claim già validati dall'authorizer.
+export function currentUser(event) {
+  const claims = event.requestContext.authorizer.jwt.claims;
+  if (claims.token_use !== "access") {
+    throw new UnauthorizedError("serve un access token");
+  }
+  const raw = claims["cognito:groups"] ?? "";
+  const groups = Array.isArray(raw) ? raw : raw.replace(/^\[|\]$/g, "").split(/[\s,]+/).filter(Boolean);
+  return { sub: claims.sub, groups };
+}
+```
+
+- Il `sub` si prende **sempre dai claim**, mai dal body o dai parametri della richiesta, che il client può scrivere come
+  vuole.
+- **Perché il controllo su `token_use`.** AWS avverte che non c'è un modo standard per distinguere un access token da un
+  ID token, e l'ID token di Cognito ha `aud` uguale all'ID dell'app client: l'authorizer lo accetterebbe. La funzione
+  comune rifiuta tutto ciò che non ha `token_use = access`. In alternativa si potrebbe chiedere uno scope sulla route
+  (l'ID token non ha `scope`), ma vorrebbe dire configurare scope su ogni route.
+
+**Decisione: il token è l'access token.** È la buona pratica OIDC per autorizzare le API, e alle Lambda bastano `sub` e
+gruppi. L'email, che prima ci obbligava a usare l'ID token, ora la legge la Mailer da Cognito al momento dell'invio.
+Motivi, vantaggi e svantaggi in [cognito.md](cognito.md#decisione-allapi-va-laccess-token); il furto del token e il
+rischio residuo (l'authorizer non vede le revoche) in [cognito.md](cognito.md#furto-del-token).
 
 ### Autorizzazione su due livelli
 
@@ -178,13 +214,22 @@ Si paga per richiesta; con il traffico del progetto resta nel livello gratuito o
 
 ## Riferimenti
 
-- [Authorizer JWT per HTTP API](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-jwt-authorizer.html)
+- [Authorizer JWT per HTTP API (`aud` o `client_id`, claim inoltrati alla Lambda)](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-jwt-authorizer.html)
+- [Formato del payload 2.0 verso la Lambda (`requestContext.authorizer.jwt.claims`)](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-develop-integrations-lambda.html)
 - [Lambda Authorizer per HTTP API (cache)](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-lambda-authorizer.html)
 - [CORS per HTTP API](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-cors.html)
 - [Log delle HTTP API](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-logging.html)
 
 ## All'orale
 
+> **Che token riceve l'API e cosa controlla l'authorizer?**
+> L'access token di Cognito. L'authorizer verifica la firma con il JWKS del pool, l'issuer, la scadenza e che il
+> `client_id` sia quello della nostra SPA (l'access token non ha `aud`). Non chiama Cognito e non vede le revoche.
+>
+> **Come arriva il gruppo alla Lambda?**
+> Nei claim, in `event.requestContext.authorizer.jwt.claims`: `cognito:groups` arriva come stringa tipo
+> `"[buyer agent]"`, e una funzione comune la trasforma in lista. Il `sub` si legge da lì, mai dal body.
+>
 > **HTTP API o REST API: perché?**
 > L'HTTP API costa meno e ha già authorizer JWT e CORS, cioè tutto ciò che ci serve. La REST API servirebbe per usage
 > plan, API key, validazione delle richieste o WAF diretto.

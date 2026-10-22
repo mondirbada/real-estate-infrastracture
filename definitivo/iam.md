@@ -12,6 +12,7 @@ resource policy del progetto; ogni JSON è mostrato e spiegato nel file del serv
 - Resource policy: [api-gateway.md](api-gateway.md), [s3.md](s3.md), [cloudfront.md](cloudfront.md),
   [lambda-files.md](lambda-files.md), [sqs.md](sqs.md), [vpc-endpoints.md](vpc-endpoints.md).
 - Autorizzazione degli utenti finali (non IAM): [cognito.md](cognito.md), [api-gateway.md](api-gateway.md).
+- Policy dell'operatore per la DLQ: [sqs.md](sqs.md#chi-fa-il-redrive-loperatore).
 
 ## Concetti
 
@@ -119,9 +120,14 @@ Convenzione: `real-estate-<ambiente>-<componente>-<scopo>`. "log" = `AWSLambdaBa
 | `real-estate-prod-lambda-offers-role` | `lambda.amazonaws.com` | log, VPC, [`lambda-offers.json`](iam/policies/lambda-offers.json): `rds-db:connect` come `offers_user`, `sns:Publish` | [lambda-offers.md](lambda-offers.md) |
 | `real-estate-prod-lambda-presigned-role` | `lambda.amazonaws.com` | log, VPC, [`lambda-presigned.json`](iam/policies/lambda-presigned.json): `rds-db:connect` come `presigned_user`, `s3:PutObject` su `uploads/*` | [lambda-presigned.md](lambda-presigned.md) |
 | `real-estate-prod-lambda-files-role` | `lambda.amazonaws.com` | log, VPC, [`lambda-files.json`](iam/policies/lambda-files.json): `rds-db:connect` come `files_user`, `s3:DeleteObject` su `uploads/*` | [lambda-files.md](lambda-files.md) |
-| `real-estate-prod-lambda-mailer-role` | `lambda.amazonaws.com` | log, [`lambda-mailer.json`](iam/policies/lambda-mailer.json): lettura della coda, `ses:SendEmail` con `ses:FromAddress` | [lambda-mailer.md](lambda-mailer.md) |
+| `real-estate-prod-lambda-mailer-role` | `lambda.amazonaws.com` | log, [`lambda-mailer.json`](iam/policies/lambda-mailer.json): lettura della coda, `cognito-idp:AdminGetUser` sul solo user pool, `ses:SendEmail` con `ses:FromAddress` | [lambda-mailer.md](lambda-mailer.md) |
 | `real-estate-prod-rds-proxy-secrets-role` | `rds.amazonaws.com` | [`rds-proxy-read-secrets.json`](iam/policies/rds-proxy-read-secrets.json) (+ [`rds-proxy-decrypt-secrets.json`](iam/policies/rds-proxy-decrypt-secrets.json) solo con una CMK) | [rds-proxy.md](rds-proxy.md) |
 | `AWSServiceRoleForRDS` (service-linked) | servizio RDS, gestita da AWS | `AmazonRDSServiceRolePolicy` | [aurora.md](aurora.md) |
+
+Oltre ai ruoli dei servizi c'è una policy per le **persone del team**:
+[`ops-dlq-redrive.json`](iam/policies/ops-dlq-redrive.json), da attaccare al ruolo o all'utente di chi gestisce la DLQ
+delle notifiche. Permette di guardare e cancellare i messaggi della DLQ, avviare, seguire e fermare il redrive verso la
+sola coda principale e leggere i log della Mailer ([sqs.md](sqs.md#chi-fa-il-redrive-loperatore)).
 
 Trust delle Lambda: [`iam/trust-relationships/lambda.json`](iam/trust-relationships/lambda.json), uguale per i sei ruoli.
 Trust del proxy: [`iam/trust-relationships/rds-proxy.json`](iam/trust-relationships/rds-proxy.json).
@@ -144,12 +150,13 @@ per ammettere il ruolo del proxy o `sns.amazonaws.com` ([kms.md](kms.md)).
 
 | Collegamento | Perché |
 | --- | --- |
-| Cognito (solo user pool) e authorizer JWT | Validano i token con le chiavi pubbliche del pool; non agiscono nell'account. I ruoli servirebbero con le *identity pool* o con i trigger Lambda, che non usiamo |
+| Cognito (solo user pool) e authorizer JWT | Validano i token con le chiavi pubbliche del pool; non agiscono nell'account. I ruoli servirebbero con le *identity pool* o con i trigger Lambda, che non usiamo. L'unico permesso IAM verso Cognito è `AdminGetUser` nel ruolo della Mailer |
+| CloudWatch → topic `real-estate-prod-ops-alerts` | Topic dello stesso account senza chiave KMS del cliente: la procedura di AWS non richiede una topic policy ([cloudwatch.md](cloudwatch.md#iam)) |
 | CloudFront → S3 | CloudFront firma le richieste con OAC; il permesso sta nella bucket policy |
 | API Gateway → Lambda | Il permesso sta sulla funzione (resource policy), non in un ruolo di API Gateway |
 | SNS → SQS | Il permesso sta nella queue policy |
 | SQS → Mailer Lambda | L'event source mapping legge la coda con il ruolo della Mailer stessa |
-| SQS → DLQ | Lo spostamento lo fa SQS secondo la `RedrivePolicy` |
+| SQS → DLQ | Lo spostamento lo fa SQS secondo la `RedrivePolicy`; il redrive inverso lo avvia un operatore con la sua policy |
 | HTTP API → CloudWatch Logs | Basta indicare il log group nello stage; il ruolo CloudWatch a livello account serve solo alle REST API |
 | Lambda → CloudWatch Logs | Li invia il servizio Lambda con i permessi `logs:*` del ruolo, senza passare dalla rete della funzione |
 | Secrets Manager | Il secret non assume ruoli; lo legge il ruolo del proxy |
@@ -161,7 +168,7 @@ per ammettere il ruolo del proxy o `sns.amazonaws.com` ([kms.md](kms.md)).
 Sono due livelli diversi, e confonderli è l'errore più comune:
 
 - **Utenti finali** (visitatore, `buyer`, `agent`, `admin`): autenticati da Cognito, autorizzati dall'authorizer JWT
-  (token valido) e dalle Lambda (gruppo del token e ownership nel database). Non sono identità IAM.
+  (access token valido) e dalle Lambda (gruppo del token e ownership nel database). Non sono identità IAM.
 - **Servizi** (Lambda, proxy, CloudFront, SNS, S3…): autorizzati da IAM con ruoli e resource policy.
 - **Dentro il database**: IAM decide chi entra nel proxy e con quale utente PostgreSQL; i `GRANT` SQL decidono cosa
   quell'utente può fare sulle tabelle.
@@ -241,6 +248,7 @@ Su un account di prova, con AWS Budgets attivo:
 | [`iam/policies/rds-proxy-read-secrets.json`](iam/policies/rds-proxy-read-secrets.json) | identity | [rds-proxy.md](rds-proxy.md) |
 | [`iam/policies/rds-proxy-decrypt-secrets.json`](iam/policies/rds-proxy-decrypt-secrets.json) | identity (solo con CMK) | [kms.md](kms.md) |
 | [`iam/policies/deploy-pass-role.json`](iam/policies/deploy-pass-role.json) | identity (deploy) | questo file |
+| [`iam/policies/ops-dlq-redrive.json`](iam/policies/ops-dlq-redrive.json) | identity (operatore) | [sqs.md](sqs.md) |
 | [`iam/resource-policies/lambda-allow-api-gateway.json`](iam/resource-policies/lambda-allow-api-gateway.json) | resource | [api-gateway.md](api-gateway.md) |
 | [`iam/resource-policies/lambda-files-allow-s3.json`](iam/resource-policies/lambda-files-allow-s3.json) | resource | [lambda-files.md](lambda-files.md) |
 | [`iam/resource-policies/s3-website-bucket-policy.json`](iam/resource-policies/s3-website-bucket-policy.json) | resource | [s3.md](s3.md) |
@@ -254,6 +262,11 @@ Su un account di prova, con AWS Budgets attivo:
 | [`config/sns-subscription-attributes.json`](config/sns-subscription-attributes.json) | configurazione | [sns.md](sns.md) |
 | [`config/sqs-notifications-queue-attributes.json`](config/sqs-notifications-queue-attributes.json) | configurazione | [sqs.md](sqs.md) |
 | [`config/sqs-notifications-dlq-attributes.json`](config/sqs-notifications-dlq-attributes.json) | configurazione | [sqs.md](sqs.md) |
+| [`config/lambda-mailer-event-source-mapping.json`](config/lambda-mailer-event-source-mapping.json) | configurazione | [lambda-mailer.md](lambda-mailer.md) |
+| [`config/cloudwatch-alarm-notifications-dlq.json`](config/cloudwatch-alarm-notifications-dlq.json) | configurazione | [cloudwatch.md](cloudwatch.md) |
+| [`config/cloudwatch-metric-filter-mailer-permanent-failures.json`](config/cloudwatch-metric-filter-mailer-permanent-failures.json) | configurazione | [cloudwatch.md](cloudwatch.md) |
+| [`config/cognito-user-pool.json`](config/cognito-user-pool.json) | configurazione | [cognito.md](cognito.md) |
+| [`config/cognito-app-client.json`](config/cognito-app-client.json) | configurazione | [cognito.md](cognito.md) |
 
 ## All'orale
 
@@ -282,6 +295,14 @@ Su un account di prova, con AWS Budgets attivo:
 > **Implicit deny ed explicit deny: chi vince?**
 > Tutto è negato di default; un Allow lo apre; un Deny esplicito vince su qualunque Allow. Lo usiamo nelle bucket policy
 > per rifiutare le richieste senza TLS.
+>
+> **La Mailer può leggere gli utenti di Cognito: non è troppo?**
+> Può solo `cognito-idp:AdminGetUser` sul nostro pool, niente scrittura né elenco. È il prezzo di non tenere l'email nel
+> database; chi controllasse la Mailer potrebbe già scrivere a quegli utenti, quindi il rischio in più è piccolo.
+>
+> **Chi può rimettere in coda i messaggi della DLQ?**
+> Solo chi ha la policy `ops-dlq-redrive.json`: azioni del move task e lettura sulla DLQ, `sqs:SendMessage` solo sulla
+> coda principale. La `RedriveAllowPolicy` della DLQ non c'entra: dice quali code possono usarla come DLQ.
 >
 > **Cosa fa `iam:PassRole`?**
 > Permette di consegnare un ruolo a un servizio. Lo ha solo l'identità di deploy, limitato ai ruoli `real-estate-prod-*`

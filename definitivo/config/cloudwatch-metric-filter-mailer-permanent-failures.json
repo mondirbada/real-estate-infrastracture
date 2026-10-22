@@ -1,0 +1,13 @@
+{
+  "logGroupName": "/aws/lambda/real-estate-prod-mailer",
+  "filterName": "real-estate-prod-mailer-permanent-failures",
+  "filterPattern": "{ $.level = \"ERROR\" && $.code = \"MAIL_PERMANENT_FAILURE\" }",
+  "metricTransformations": [
+    {
+      "metricNamespace": "RealEstate/Notifications",
+      "metricName": "MailerPermanentFailures",
+      "metricValue": "1",
+      "defaultValue": 0
+    }
+  ]
+}

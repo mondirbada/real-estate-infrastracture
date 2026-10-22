@@ -31,8 +31,8 @@ Catena: [SNS](sns.md) → [SQS](sqs.md) → Mailer → SES.
 
 ## IAM
 
-Il permesso di inviare sta nella policy della Mailer, statement `SendEmailFromProjectAddressOnly` (l'altro statement
-riguarda la coda, [lambda-mailer.md](lambda-mailer.md#iam)):
+Il permesso di inviare sta nella policy della Mailer, statement `SendEmailFromProjectAddressOnly` (gli altri due
+riguardano la coda e la lettura dell'email da Cognito, [lambda-mailer.md](lambda-mailer.md#iam)):
 
 File: [`iam/policies/lambda-mailer.json`](iam/policies/lambda-mailer.json)
 
@@ -49,6 +49,12 @@ File: [`iam/policies/lambda-mailer.json`](iam/policies/lambda-mailer.json)
         "sqs:GetQueueAttributes"
       ],
       "Resource": "arn:aws:sqs:eu-south-1:<ACCOUNT_ID>:real-estate-prod-notifications-queue"
+    },
+    {
+      "Sid": "ReadRecipientEmailFromUserPool",
+      "Effect": "Allow",
+      "Action": "cognito-idp:AdminGetUser",
+      "Resource": "arn:aws:cognito-idp:eu-south-1:<ACCOUNT_ID>:userpool/<USER_POOL_ID>"
     },
     {
       "Sid": "SendEmailFromProjectAddressOnly",
@@ -108,4 +114,9 @@ Per email inviata, con prezzi molto bassi; in sandbox i volumi sono comunque lim
 > `JavaMailSender` configurato su un server SMTP.
 >
 > **Come rendete affidabile l'invio se SES è giù?**
-> I messaggi restano in SQS e vengono ritentati; dopo 5 fallimenti vanno nella DLQ e scatta l'allarme.
+> I messaggi restano in SQS e vengono ritentati; dopo 5 ricezioni vanno nella DLQ, scatta l'allarme e, corretta la
+> causa, si rimandano in coda con il redrive.
+>
+> **E se SES rifiuta un destinatario?**
+> In sandbox un destinatario non verificato dà `MessageRejected`: è un errore permanente, ritentare non serve. La Mailer
+> lo logga come `MAIL_PERMANENT_FAILURE` e un metric filter con un allarme lo rende visibile.

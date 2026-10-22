@@ -38,6 +38,7 @@ d'errore personalizzate, OAC.
 | Errori 403/404 | → `/index.html` con codice 200 (routing della SPA) | nessuna regola |
 | Contenuto | HTML, JS, CSS della SPA | foto e video sotto `uploads/` |
 | Viewer protocol | redirect HTTP → HTTPS | redirect HTTP → HTTPS |
+| Response headers policy | `real-estate-prod-site-security-headers` (CSP e header di sicurezza) | — |
 
 - **Due distribuzioni e non una**: le pagine d'errore personalizzate valgono per tutta una distribuzione, e la regola
   "403/404 → `/index.html`" non deve toccare i file (un file mancante deve dare errore, non la SPA). Anche cache ed
@@ -48,6 +49,25 @@ d'errore personalizzate, OAC.
   CloudFront andrebbe creato in **`us-east-1`**, non a Milano.
 - **File pubblici**: chiunque abbia il link vede un file, come le foto di un annuncio. Il bucket resta comunque privato
   e nessuno lo legge direttamente.
+
+### Header di sicurezza (response headers policy)
+
+Sulla distribuzione del sito una **response headers policy** personalizzata aggiunge a ogni risposta gli header di
+sicurezza. È una delle difese contro il furto dei token via XSS ([cognito.md](cognito.md#furto-del-token)): la SPA tiene
+i token in memoria, e la CSP limita quali script possono girare nella pagina e verso chi possono mandare dati. La policy
+gestita da AWS `SecurityHeadersPolicy` aggiunge gli altri header ma **non la CSP**, che dipende dai domini del
+progetto: per questo serve una policy nostra.
+
+| Header | Valore | A cosa serve |
+| --- | --- | --- |
+| `Content-Security-Policy` | `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://<FILES_DOMAIN>; media-src https://<FILES_DOMAIN>; connect-src 'self' https://<API_ID>.execute-api.eu-south-1.amazonaws.com https://cognito-idp.eu-south-1.amazonaws.com https://<COGNITO_DOMAIN> https://real-estate-prod-files-<SUFFIX>.s3.eu-south-1.amazonaws.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'` | script solo dal nostro sito (niente script inline o di terzi); chiamate solo verso API, Cognito e bucket degli upload |
+| `Strict-Transport-Security` | `max-age=31536000` | il browser usa solo HTTPS per il sito |
+| `X-Content-Type-Options` | `nosniff` | il browser non "indovina" il tipo dei file |
+| `X-Frame-Options` | `DENY` | la pagina non si può incorniciare in un altro sito (clickjacking) |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | verso altri siti si manda solo l'origine, non il percorso |
+
+`<FILES_DOMAIN>` è il dominio della distribuzione dei file e `<COGNITO_DOMAIN>` quello del login gestito del user pool.
+La CSP va provata con la SPA vera: un dominio dimenticato blocca una funzione, e il browser lo segnala in console.
 
 ## IAM
 
@@ -156,6 +176,7 @@ Si pagano il trasferimento verso Internet e le richieste; c'è un livello gratui
 ## Riferimenti
 
 - [Origin Access Control](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html)
+- [Response headers policy gestite (`SecurityHeadersPolicy` non include la CSP)](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-managed-response-headers-policies.html)
 
 ## All'orale
 
@@ -178,6 +199,10 @@ Si pagano il trasferimento verso Internet e le richieste; c'è un livello gratui
 > **Cosa succede dopo un deploy del sito?**
 > Si caricano i file nuovi nel bucket e si invalida la cache (`/*`), altrimenti gli edge servono la versione vecchia fino
 > alla scadenza del TTL.
+>
+> **Come vi difendete dall'XSS che ruba i token?**
+> I token stanno in memoria nella SPA, non in `localStorage`, e CloudFront aggiunge con una response headers policy una
+> Content-Security-Policy che fa girare solo i nostri script e permette chiamate solo verso API, Cognito e S3.
 >
 > **CloudFront autentica gli utenti?**
 > No. Serve solo file; il login lo fa la SPA con Cognito e i dati protetti stanno dietro l'API.

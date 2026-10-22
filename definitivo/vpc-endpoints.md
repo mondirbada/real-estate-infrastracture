@@ -38,7 +38,8 @@ Rete e security group: [vpc.md](vpc.md).
 
 ### Endpoint che non servono
 
-- **Cognito**: le Lambda non lo chiamano (l'authorizer valida i token da sé, l'account lo gestisce il frontend).
+- **Cognito**: le Lambda nella VPC non lo chiamano (l'authorizer valida i token da sé, l'account lo gestisce il
+  frontend). Lo chiama solo la Mailer (`AdminGetUser`), che è fuori dalla VPC.
 - **SQS e SES**: li usa solo la Mailer, che è fuori dalla VPC.
 - **CloudWatch Logs e credenziali dei ruoli**: li gestisce il servizio Lambda, non la rete della funzione.
 - **S3 per la Presigned**: la firma è locale. **S3 per la notifica verso la Files**: l'invocazione la fa il servizio Lambda.
@@ -116,7 +117,8 @@ S3 è gratuito. È comunque meno di un NAT per AZ, che sarebbe l'alternativa.
 > interno di Docker Compose che punta al container giusto.
 >
 > **Perché non c'è un endpoint per Cognito, SQS o SES?**
-> Le Lambda in VPC non chiamano Cognito; SQS e SES li usa solo la Mailer, che è fuori dalla VPC.
+> Le Lambda in VPC non chiamano Cognito; SQS, SES e `AdminGetUser` di Cognito li usa solo la Mailer, che è fuori dalla
+> VPC.
 >
 > **L'endpoint di Secrets Manager serve?**
 > Non è documentato: lo teniamo e lo verifichiamo alla creazione del proxy. Se il proxy legge i secret senza, lo

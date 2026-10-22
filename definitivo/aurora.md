@@ -68,6 +68,24 @@ le letture servirebbe un endpoint di sola lettura del proxy (punto aperto).
   ruolo del proxy, né il ruolo `rds_iam` agli utenti PostgreSQL. In PostgreSQL `rds_iam` cambia la modalità di
   autenticazione dell'utente: non va aggiunto indiscriminatamente agli utenti applicativi di questo modello.
 
+### Dati personali: niente email nel database
+
+La tabella `users` ha come chiave il `sub` di Cognito e **non ha la colonna email**. Le altre tabelle si riferiscono
+all'utente sempre con il `sub` (`owner_id` degli immobili, autore delle offerte).
+
+| Colonna | Da dove arriva | Note |
+| --- | --- | --- |
+| `sub` (chiave primaria) | claim `sub` dell'access token, in `PUT /users/me` | identificativo opaco e stabile di Cognito: non cambia nemmeno se l'utente cambia email |
+| dati di profilo applicativi | body di `PUT /users/me` | solo ciò che serve all'applicazione (per esempio il profilo pubblico dell'agente) |
+
+Perché:
+
+- **Minimizzazione dei dati** (GDPR): l'email sta in un posto solo, Cognito. Un dump del database o un'iniezione SQL non
+  espongono i recapiti degli utenti.
+- **Nessuna copia da riallineare**: se l'utente cambia email su Cognito, la Mailer usa subito quella nuova.
+- Quando serve un'email la Mailer la chiede a Cognito con `AdminGetUser`, partendo dal `recipientSub` dell'evento
+  ([lambda-mailer.md](lambda-mailer.md#da-dove-arriva-lemail)).
+
 ## IAM
 
 Aurora usa il **service-linked role** `AWSServiceRoleForRDS`, con la policy AWS `AmazonRDSServiceRolePolicy` e trust
@@ -122,6 +140,10 @@ cancellano cluster e proxy, che costano anche a vuoto.
 >
 > **Il service-linked role dà accesso ai dati?**
 > No: serve al servizio RDS per gestire le sue risorse. L'accesso ai dati è IAM verso il proxy più i `GRANT`.
+>
+> **Che dati personali tenete nel database?**
+> Il `sub` di Cognito come chiave e i dati di profilo applicativi; niente email. L'email sta solo in Cognito e la legge
+> la Mailer quando deve inviare. È come tenere nel database di un'app Spring solo l'ID dell'utente di Keycloak.
 >
 > **Perché non RDS PostgreSQL o Serverless v2?**
 > Si potrebbe: Aurora dà failover più rapido e storage multi-AZ; Serverless v2 costerebbe meno con poco traffico.

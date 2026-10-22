@@ -1,0 +1,34 @@
+{
+  "ClientName": "real-estate-prod-spa",
+  "UserPoolId": "<USER_POOL_ID>",
+  "GenerateSecret": false,
+  "AllowedOAuthFlowsUserPoolClient": true,
+  "AllowedOAuthFlows": [
+    "code"
+  ],
+  "AllowedOAuthScopes": [
+    "openid",
+    "email",
+    "aws.cognito.signin.user.admin"
+  ],
+  "CallbackURLs": [
+    "https://<SITE_DOMAIN>/callback"
+  ],
+  "LogoutURLs": [
+    "https://<SITE_DOMAIN>/"
+  ],
+  "SupportedIdentityProviders": [
+    "COGNITO"
+  ],
+  "AccessTokenValidity": 60,
+  "IdTokenValidity": 60,
+  "TokenValidityUnits": {
+    "AccessToken": "minutes",
+    "IdToken": "minutes"
+  },
+  "EnableTokenRevocation": true,
+  "WriteAttributes": [
+    "email",
+    "name"
+  ]
+}

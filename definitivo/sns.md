@@ -11,7 +11,11 @@ oggi è la coda SQS delle notifiche.
 | Pubblicano | [Property](lambda-property.md), [Users](lambda-users.md), [Offers](lambda-offers.md) | `sns:Publish` tramite l'[interface endpoint SNS](vpc-endpoints.md) | identity policy dei ruoli; security group ed endpoint policy dell'endpoint |
 | Consegna a | [SQS](sqs.md), coda `real-estate-prod-notifications-queue` | sottoscrizione | queue policy della coda |
 
-Catena completa: Lambda → SNS → SQS (+ DLQ) → [Mailer Lambda](lambda-mailer.md) → [SES](ses.md).
+Catena completa: Lambda → SNS → SQS (+ DLQ) → [Mailer Lambda](lambda-mailer.md) → [Cognito](cognito.md) per l'email
+del destinatario → [SES](ses.md).
+
+Il progetto ha anche un secondo topic, `real-estate-prod-ops-alerts`, su cui pubblicano solo gli allarmi CloudWatch e
+che manda email al team: è descritto in [cloudwatch.md](cloudwatch.md#topic-real-estate-prod-ops-alerts).
 
 ## Perché SNS + SQS
 
@@ -41,8 +45,33 @@ File: [`config/sns-subscription-attributes.json`](config/sns-subscription-attrib
 }
 ```
 
-Il messaggio pubblicato contiene già **destinatario e dati dell'email** (per esempio una nuova offerta su un immobile,
-un'offerta accettata, il benvenuto a un nuovo utente), così la Mailer non ha bisogno del database.
+### Formato degli eventi
+
+Il messaggio pubblicato contiene il **destinatario come `recipientSub`** (il `sub` di Cognito) e i dati che servono a
+comporre l'email, **non l'indirizzo email**. Tipi di evento: nuova offerta su un immobile, offerta accettata o
+rifiutata, benvenuto a un nuovo utente.
+
+```json
+{
+  "eventId": "6f1c2a9e-3b4d-4e5f-8a7b-9c0d1e2f3a4b",
+  "type": "OFFER_CREATED",
+  "recipientSub": "a1b2c3d4-5678-90ab-cdef-EXAMPLE11111",
+  "occurredAt": "2026-10-22T10:15:00Z",
+  "data": {
+    "propertyId": "1042",
+    "propertyTitle": "Trilocale in centro",
+    "offerId": "5531",
+    "amount": 250000
+  }
+}
+```
+
+- `recipientSub`: per una nuova offerta è il `owner_id` dell'immobile, per l'esito è il `sub` di chi ha fatto l'offerta,
+  per il benvenuto il `sub` del nuovo utente. Le Lambda lo prendono dal database o dai claim, mai dal body.
+- `eventId`: identifica l'evento nei log della Mailer, insieme al `messageId` di SQS.
+- La Mailer non ha bisogno del database: l'indirizzo lo legge da Cognito con `AdminGetUser`
+  ([lambda-mailer.md](lambda-mailer.md#da-dove-arriva-lemail)).
+- Nessun dato personale nel messaggio: se un evento finisce nella DLQ o in un log, non espone l'email di nessuno.
 
 ## IAM
 
@@ -86,6 +115,10 @@ costo orario per AZ ([vpc-endpoints.md](vpc-endpoints.md#costi)).
 >
 > **Perché il topic non ha una policy?**
 > Quella di default ammette già le identità del nostro account; chi può pubblicare lo decidono le identity policy.
+>
+> **Cosa c'è dentro un evento di notifica?**
+> Il tipo, il `recipientSub` del destinatario e i dati dell'offerta o dell'immobile. Non l'email: la Mailer la chiede a
+> Cognito al momento dell'invio, così è sempre aggiornata e non resta copiata in code e log.
 >
 > **Cos'è `RawMessageDelivery`?**
 > La coda riceve il messaggio originale invece della busta JSON di SNS, così la Mailer non deve spacchettarlo.

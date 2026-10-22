@@ -14,7 +14,7 @@ tutte; ogni funzione ha il suo file.
 | `real-estate-prod-offers` | API Gateway | RDS Proxy, SNS | [lambda-offers.md](lambda-offers.md) |
 | `real-estate-prod-presigned` | API Gateway | RDS Proxy (la firma S3 è locale) | [lambda-presigned.md](lambda-presigned.md) |
 | `real-estate-prod-files` | API Gateway, notifica S3 | RDS Proxy, S3 | [lambda-files.md](lambda-files.md) |
-| `real-estate-prod-mailer` | event source mapping della coda SQS | SES | [lambda-mailer.md](lambda-mailer.md) |
+| `real-estate-prod-mailer` | event source mapping della coda SQS | Cognito (`AdminGetUser`), SES | [lambda-mailer.md](lambda-mailer.md) |
 
 Servizi collegati: [api-gateway.md](api-gateway.md), [rds-proxy.md](rds-proxy.md), [vpc.md](vpc.md),
 [vpc-endpoints.md](vpc-endpoints.md), [sns.md](sns.md), [sqs.md](sqs.md), [s3.md](s3.md), [cloudwatch.md](cloudwatch.md).
@@ -30,7 +30,8 @@ Servizi collegati: [api-gateway.md](api-gateway.md), [rds-proxy.md](rds-proxy.md
 - **Configurazione**: memoria da 128 MB a 10 GB (la CPU cresce con la memoria), timeout massimo 15 minuti, variabili
   d'ambiente, layer, architettura x86 o ARM (Graviton, più economica). Versioni immutabili e alias (`prod`).
 - **Modelli di invocazione**: sincrona (API Gateway), asincrona (notifica S3, con retry e possibilità di DLQ o *destination* per i fallimenti), *event source mapping* (la
-  funzione legge a batch da una coda SQS).
+  funzione legge a batch da una coda SQS; i fallimenti li gestisce la DLQ della coda, non quella della funzione:
+  [sqs.md](sqs.md#perché-la-dlq-sta-sulla-coda-e-non-sulla-lambda)).
 
 ## Una Lambda per scope, con router interno
 
@@ -64,7 +65,7 @@ Cosa raggiunge ogni Lambda e come:
 | Presigned | S3 | nessuna chiamata: il presigned POST si firma in locale |
 | Files, Property | S3 (cancellazione; la Property solo quando cancella un immobile) | gateway endpoint S3 |
 | Users | Cognito | nessuna chiamata: l'account lo gestisce il frontend |
-| Mailer (fuori VPC) | SQS, SES | rete di AWS; la coda la legge il servizio Lambda (event source mapping) |
+| Mailer (fuori VPC) | SQS, Cognito, SES | rete di AWS; la coda la legge il servizio Lambda (event source mapping) |
 
 ## Connessione al database
 
@@ -124,6 +125,7 @@ Cosa concedono le policy del progetto:
 | presigned | `rds-db:connect` | `dbuser:<prx-ID>/presigned_user` | controllare che l'utente sia il proprietario dell'immobile |
 | presigned | `s3:PutObject` | `real-estate-prod-files-<SUFFIX>/uploads/*` | firmare il presigned POST |
 | mailer | `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` | coda `real-estate-prod-notifications-queue` | le azioni che servono all'event source mapping per leggere la coda |
+| mailer | `cognito-idp:AdminGetUser` | il solo user pool `userpool/<USER_POOL_ID>` | leggere l'email del destinatario dal `recipientSub` dell'evento |
 | mailer | `ses:SendEmail` con condizione `ses:FromAddress` | `identity/*` della regione | inviare email solo dal mittente del progetto |
 
 ### Policy gestite da AWS

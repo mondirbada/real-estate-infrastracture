@@ -1,0 +1,31 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "InspectAndRedriveNotificationsDlq",
+      "Effect": "Allow",
+      "Action": [
+        "sqs:ReceiveMessage",
+        "sqs:DeleteMessage",
+        "sqs:GetQueueAttributes",
+        "sqs:StartMessageMoveTask",
+        "sqs:ListMessageMoveTasks",
+        "sqs:CancelMessageMoveTask",
+        "sqs:ListDeadLetterSourceQueues"
+      ],
+      "Resource": "arn:aws:sqs:eu-south-1:<ACCOUNT_ID>:real-estate-prod-notifications-dlq"
+    },
+    {
+      "Sid": "SendRedrivenMessagesToNotificationsQueue",
+      "Effect": "Allow",
+      "Action": "sqs:SendMessage",
+      "Resource": "arn:aws:sqs:eu-south-1:<ACCOUNT_ID>:real-estate-prod-notifications-queue"
+    },
+    {
+      "Sid": "ReadMailerLogsToFindTheCause",
+      "Effect": "Allow",
+      "Action": "logs:FilterLogEvents",
+      "Resource": "arn:aws:logs:eu-south-1:<ACCOUNT_ID>:log-group:/aws/lambda/real-estate-prod-mailer:*"
+    }
+  ]
+}

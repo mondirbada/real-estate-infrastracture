@@ -29,6 +29,7 @@ file degli annunci in S3; le notifiche email passano da SNS, SQS e SES. Diagramm
 | Notifiche | SNS, topic | `real-estate-prod-notifications` | [sns.md](sns.md) |
 | Notifiche | SQS, coda e DLQ | `real-estate-prod-notifications-queue`, `real-estate-prod-notifications-dlq` | [sqs.md](sqs.md) |
 | Notifiche | SES | mittente `<MAIL_FROM>` | [ses.md](ses.md) |
+| Supporto | SNS, topic degli allarmi verso il team | `real-estate-prod-ops-alerts` | [cloudwatch.md](cloudwatch.md) |
 | Supporto | CloudWatch | log group di Lambda e API | [cloudwatch.md](cloudwatch.md) |
 | Supporto | IAM | ruoli `real-estate-prod-*` | [iam.md](iam.md) |
 
@@ -57,21 +58,22 @@ Tre idee tengono insieme il progetto:
 
 ### 2. Registrazione e login
 
-1. La SPA registra e autentica l'utente direttamente con Cognito ([cognito.md](cognito.md)), che restituisce ID token,
-   access token e refresh token.
-2. Subito dopo ogni login la SPA chiama `PUT /users/me` con l'ID token ([api-gateway.md](api-gateway.md)): la Users
-   Lambda ([lambda-users.md](lambda-users.md)) crea o aggiorna la riga dell'utente in Aurora con `sub` ed `email` presi
-   dal token.
+1. La SPA registra e autentica l'utente con Cognito ([cognito.md](cognito.md)): login gestito con authorization code e
+   PKCE, email come attributo di accesso. Cognito restituisce ID token, access token e refresh token; la SPA li tiene
+   in memoria. L'ID token le serve solo per sapere chi è loggato.
+2. Subito dopo ogni login la SPA chiama `PUT /users/me` con l'**access token** ([api-gateway.md](api-gateway.md)): la
+   Users Lambda ([lambda-users.md](lambda-users.md)) crea o aggiorna la riga dell'utente in Aurora con il solo `sub`
+   preso dai claim. L'email resta solo in Cognito.
 3. Al nuovo utente può arrivare l'email di benvenuto (flusso 8).
 
 ### 3. Una chiamata API autenticata (schema comune a tutte le route)
 
-1. La SPA chiama l'HTTP API con `Authorization: Bearer <ID token>` ([api-gateway.md](api-gateway.md)). Il browser
+1. La SPA chiama l'HTTP API con `Authorization: Bearer <access token>` ([api-gateway.md](api-gateway.md)). Il browser
    prima fa il preflight CORS `OPTIONS`, a cui l'API risponde da sola.
-2. L'authorizer JWT verifica firma (JWKS), issuer e audience del token senza chiamare Cognito; se il token non è
-   valido la richiesta si ferma lì con 401.
-3. API Gateway invoca la Lambda dello *scope*, che lo ammette con una resource-based policy, passando i claim
-   (`sub`, `email`, `cognito:groups`).
+2. L'authorizer JWT verifica firma (JWKS), issuer, audience (il claim `client_id`, perché l'access token non ha `aud`)
+   e scadenza senza chiamare Cognito; se il token non è valido la richiesta si ferma lì con 401.
+3. API Gateway invoca la Lambda dello *scope*, che lo ammette con una resource-based policy, passando i claim. La Lambda
+   usa `sub` e `cognito:groups` (e rifiuta i token con `token_use` diverso da `access`).
 4. La Lambda controlla il **ruolo** (gruppo) e, dove serve, l'**ownership** con una query.
 5. Per il database la Lambda calcola in locale un token IAM e si collega al proxy su 5432 con TLS
    ([rds-proxy.md](rds-proxy.md)); il proxy, con il suo ruolo, usa la password letta da Secrets Manager
@@ -115,16 +117,26 @@ Tre idee tengono insieme il progetto:
 ### 8. Notifiche email
 
 1. Property, Users o Offers pubblicano un evento sul topic SNS ([sns.md](sns.md)) attraverso l'interface endpoint SNS
-   ([vpc-endpoints.md](vpc-endpoints.md)). L'evento contiene già destinatario e dati dell'email.
+   ([vpc-endpoints.md](vpc-endpoints.md)). L'evento porta il destinatario come **`recipientSub`** e i dati dell'email,
+   non l'indirizzo ([sns.md](sns.md#formato-degli-eventi)).
 2. SNS lo consegna alla coda SQS ([sqs.md](sqs.md)), che lo ammette con la sua queue policy.
-3. L'event source mapping della Mailer Lambda ([lambda-mailer.md](lambda-mailer.md)) legge la coda a batch e la
-   invoca; la Mailer invia l'email con SES ([ses.md](ses.md)).
-4. Se un messaggio fallisce 5 volte finisce nella DLQ; un allarme CloudWatch lo segnala ([cloudwatch.md](cloudwatch.md)).
+3. L'event source mapping della Mailer Lambda ([lambda-mailer.md](lambda-mailer.md)) legge la coda a batch di 10, con
+   al massimo 2 invocazioni insieme, e la invoca.
+4. Per ogni messaggio la Mailer chiede l'email a **Cognito** con `AdminGetUser` (`Username` = `recipientSub`) e la
+   invia con SES ([ses.md](ses.md)). Risponde con i soli messaggi falliti per un errore temporaneo
+   (`batchItemFailures`); gli altri vengono cancellati dalla coda. Gli errori permanenti si loggano e non si ritentano.
+5. Un messaggio fallito torna visibile dopo il visibility timeout (180 s) e viene ritentato; dopo **5 ricezioni**
+   (`maxReceiveCount`, circa 15 minuti) SQS lo sposta nella DLQ.
+6. L'allarme CloudWatch sulla DLQ ([cloudwatch.md](cloudwatch.md)) pubblica sul topic SNS `real-estate-prod-ops-alerts`,
+   che manda un'email al team.
+7. Il team trova la causa nei log, la corregge e rimanda i messaggi nella coda con il **redrive manuale**
+   (`StartMessageMoveTask`) ([sqs.md](sqs.md#procedura-operativa-quando-scatta-lallarme)).
 
 ### 9. Modifica e cancellazione dell'account
 
 - Cambio password o email: la SPA chiama Cognito direttamente (`UpdateUserAttributes`, con l'access token
-  dell'utente) ([cognito.md](cognito.md)). Al login successivo `PUT /users/me` riallinea l'email nel database.
+  dell'utente) ([cognito.md](cognito.md)). Nel database non c'è nulla da riallineare: l'email sta solo in Cognito e la
+  Mailer legge sempre quella attuale.
 - Cancellazione: la SPA chiama prima `DELETE /users/me` (la Users Lambda cancella o anonimizza i dati applicativi) e poi
   `DeleteUser` di Cognito. Se il secondo passo fallisce l'account esiste ancora e l'utente può ripetere la cancellazione;
   se intanto rientra, `PUT /users/me` gli ricrea un profilo vuoto.
@@ -132,7 +144,8 @@ Tre idee tengono insieme il progetto:
 ### 10. Log e monitoraggio
 
 Tutte le Lambda e lo stage dell'HTTP API scrivono i log in CloudWatch; le metriche dei servizi alimentano gli allarmi
-(errori delle Lambda, messaggi nella DLQ, CPU e connessioni di Aurora) ([cloudwatch.md](cloudwatch.md)).
+(errori delle Lambda, messaggi nella DLQ, messaggi vecchi in coda, errori permanenti della Mailer, CPU e connessioni di
+Aurora), che avvisano il team via email tramite il topic `real-estate-prod-ops-alerts` ([cloudwatch.md](cloudwatch.md)).
 
 ## Scelte di fondo
 
@@ -143,6 +156,7 @@ Tutte le Lambda e lo stage dell'HTTP API scrivono i log in CloudWatch; le metric
 | Niente subnet pubbliche, Internet Gateway e NAT | Il traffico utente entra da CloudFront e API Gateway, che stanno fuori dalla VPC, e non chiamiamo API esterne: il NAT sarebbe un costo fisso inutile. I servizi AWS si raggiungono con gli endpoint VPC ([vpc.md](vpc.md)) |
 | In VPC solo le Lambda che usano il database | Il proxy è raggiungibile solo dalla VPC; la Mailer fuori evita endpoint, cold start e costi ([lambda.md](lambda.md)) |
 | Autorizzazione su due livelli | Ruolo dai gruppi Cognito, ownership nella Lambda con il database ([api-gateway.md](api-gateway.md)) |
+| Access token verso l'API, email solo in Cognito | Buona pratica OIDC; nessuna email nei token, nelle richieste, negli eventi o nel database: la legge la Mailer con `AdminGetUser` ([cognito.md](cognito.md#decisione-allapi-va-laccess-token)) |
 | Nessuna password nel codice | Lambda → proxy con IAM; la password del DB la legge solo il proxy ([rds-proxy.md](rds-proxy.md)) |
 | Least privilege | Un execution role per Lambda, un utente PostgreSQL per Lambda, resource policy con `aws:SourceArn` ([iam.md](iam.md)) |
 | Cifratura ovunque | In transito: HTTPS (CloudFront reindirizza HTTP su HTTPS, le bucket policy negano le richieste senza TLS), "Require TLS" sull'RDS Proxy e TLS tra proxy e Aurora. A riposo: Aurora con KMS `aws/rds`, S3 con SSE-S3, SQS con SSE-SQS, secret con `aws/secretsmanager` ([kms.md](kms.md)) |
@@ -158,7 +172,9 @@ Tutte le Lambda e lo stage dell'HTTP API scrivono i log in CloudWatch; le metric
 5. Proxy: associare ruolo e secret, registrare il cluster come target, richiedere IAM per i client e TLS.
 6. Inserire l'ID del proxy (`prx-...`) nelle policy degli execution role delle Lambda ([lambda.md](lambda.md)).
 7. Configurare il client PostgreSQL delle Lambda per token IAM e TLS verso il proxy.
-8. Topic, coda e DLQ con le configurazioni di `config/`, la queue policy e la sottoscrizione ([sqs.md](sqs.md), [sns.md](sns.md)).
+8. Topic, coda e DLQ con le configurazioni di `config/`, la queue policy e la sottoscrizione ([sqs.md](sqs.md), [sns.md](sns.md));
+   event source mapping della Mailer ([lambda-mailer.md](lambda-mailer.md#event-source-mapping)); topic
+   `real-estate-prod-ops-alerts` con la sottoscrizione email del team, metric filter e allarmi ([cloudwatch.md](cloudwatch.md)).
 9. Bucket con Block Public Access, distribuzioni CloudFront con OAC e bucket policy; poi CORS e notifica S3 sul bucket
    dei file ([s3.md](s3.md), [cloudfront.md](cloudfront.md)).
 10. HTTP API con authorizer JWT, route, CORS e permessi di invocazione delle Lambda ([api-gateway.md](api-gateway.md)).
@@ -169,9 +185,14 @@ La rete (VPC, subnet, security group, endpoint) è il prerequisito di tutti i pa
 ## All'orale
 
 > **Seguimi una richiesta "crea un'offerta" dal clic al database.**
-> SPA → HTTP API con l'ID token → authorizer JWT (firma, issuer, audience) → Offers Lambda (permesso di invocazione
+> SPA → HTTP API con l'access token → authorizer JWT (firma, issuer, `client_id`) → Offers Lambda (permesso di invocazione
 > sulla funzione) → controllo del gruppo `buyer` → token IAM e connessione TLS al proxy (`rds-db:connect` come
-> `offers_user`) → il proxy usa la password dal secret → Aurora. Poi `sns:Publish` sul topic tramite l'endpoint SNS.
+> `offers_user`) → il proxy usa la password dal secret → Aurora. Poi `sns:Publish` sul topic tramite l'endpoint SNS,
+> con il `recipientSub` del proprietario; la Mailer chiede la sua email a Cognito e la invia con SES.
+>
+> **E se l'email della notifica non parte?**
+> Il messaggio resta nella coda e viene ritentato; dopo 5 ricezioni, circa un quarto d'ora, va nella DLQ, l'allarme
+> manda un'email al team, che corregge la causa e lo rimanda in coda con il redrive.
 >
 > **Perché serverless e non un'applicazione sempre accesa?**
 > Il traffico è basso e variabile: con Lambda si paga per richiesta e non c'è un server da gestire. È come avere i

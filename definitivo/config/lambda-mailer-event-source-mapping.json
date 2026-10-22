@@ -1,0 +1,13 @@
+{
+  "EventSourceArn": "arn:aws:sqs:eu-south-1:<ACCOUNT_ID>:real-estate-prod-notifications-queue",
+  "FunctionName": "real-estate-prod-mailer",
+  "Enabled": true,
+  "BatchSize": 10,
+  "MaximumBatchingWindowInSeconds": 0,
+  "FunctionResponseTypes": [
+    "ReportBatchItemFailures"
+  ],
+  "ScalingConfig": {
+    "MaximumConcurrency": 2
+  }
+}

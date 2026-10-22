@@ -16,7 +16,7 @@ futuri. Ogni riga rimanda al file del servizio che la spiega per intero.
 | Endpoint VPC: interface SNS, interface Secrets Manager, gateway S3 (gratuito) | Unico modo per raggiungere i servizi AWS dalla VPC senza NAT; solo quelli che servono davvero | [vpc-endpoints.md](vpc-endpoints.md) |
 | Private DNS sugli interface endpoint (`enableDnsSupport`, `enableDnsHostnames`) | L'SDK usa i nomi standard dei servizi senza modifiche al codice | [vpc-endpoints.md](vpc-endpoints.md) |
 | Security group solo sulle risorse nella VPC, regole SG → SG | I servizi gestiti fuori dalla VPC non hanno ENI; le regole tra gruppi restano valide quando cambiano gli IP | [vpc.md](vpc.md#security-group) |
-| Nessun PrivateLink per Cognito | Le Lambda non chiamano Cognito: l'authorizer valida i token da sé | [cognito.md](cognito.md#sicurezza-e-rete) |
+| Nessun PrivateLink per Cognito | Le Lambda nella VPC non chiamano Cognito: l'authorizer valida i token da sé; la Mailer, unica a chiamarlo (`AdminGetUser`), è fuori dalla VPC | [cognito.md](cognito.md#sicurezza-e-rete) |
 
 ### Frontend e storage
 
@@ -39,10 +39,12 @@ futuri. Ogni riga rimanda al file del servizio che la spiega per intero.
 | --- | --- | --- |
 | HTTP API e non REST API | Costa meno, ha authorizer JWT e CORS integrati: tutto ciò che serve | [api-gateway.md](api-gateway.md#perché-unhttp-api) |
 | Authorizer JWT nativo, nessuna Lambda Authorizer | La cache di una Lambda Authorizer vale per tutte le route; senza cache servirebbe il DB a ogni richiesta | [api-gateway.md](api-gateway.md#autorizzazione-su-due-livelli) |
-| **Il frontend manda all'HTTP API l'ID token** (decisione definitiva) | Le Lambda hanno bisogno di `email` e `sub`, che l'ID token contiene e l'access token no; con l'access token l'email andrebbe presa dal body (falsificabile) o chiesta a Cognito con `GetUser`, irraggiungibile dalla VPC senza un endpoint in più; una Pre Token Generation Lambda per mettere `email` nell'access token complicherebbe il progetto; non usiamo scope OAuth né resource server. Limite: la buona pratica OIDC vuole l'access token con gli scope per le API; se servissero permessi a scope si passerebbe all'access token, e l'authorizer accetta tutti e due (`aud` nell'ID token, `client_id` nell'access token), quindi sarebbe solo configurazione | [cognito.md](cognito.md#decisione-allapi-va-lid-token) |
+| **Il frontend manda all'HTTP API l'access token**; l'email la legge la Mailer da Cognito (decisione presa dopo la discussione con il professore) | Buona pratica OIDC: l'access token autorizza le API. Resta l'authorizer JWT (issuer = user pool, audience controllata su `client_id`), senza scope personalizzati né resource server. Le Lambda usano solo `sub` e `cognito:groups` dai claim. Gli eventi portano `recipientSub`, il database non ha l'email, e la Mailer la legge con `AdminGetUser` (pool con l'email come attributo di accesso, quindi `username` = `sub`). Vantaggi: nessuna email nei token né nelle richieste, email sempre aggiornata, meno dati personali nel DB, nessun componente nuovo. Svantaggi: la Mailer dipende da Cognito (se non risponde: retry e DLQ) e il suo ruolo può leggere gli utenti del pool | [cognito.md](cognito.md#decisione-allapi-va-laccess-token) |
+| Durata di ID e access token 60 minuti | Con il login gestito AWS sconsiglia di scendere sotto l'ora: il cookie di sessione vale un'ora, un token più corto non accorcia la sessione | [cognito.md](cognito.md#app-client-della-spa) |
+| Token in memoria nella SPA, CSP da CloudFront, revoca al logout | Difese contro il furto del token; rischio residuo dichiarato: l'authorizer non vede le revoche, un token rubato vale fino a un'ora | [cognito.md](cognito.md#furto-del-token), [cloudfront.md](cloudfront.md#header-di-sicurezza-response-headers-policy) |
 | Autorizzazione su due livelli: ruolo (gruppi Cognito) e ownership (nella Lambda, con il DB) | L'authorizer sa chi sei; se la risorsa è tua lo sa solo il database | [api-gateway.md](api-gateway.md#autorizzazione-su-due-livelli) |
 | Gruppi `buyer`, `agent`, `admin` nel user pool; solo user pool, niente identity pool | I ruoli applicativi arrivano nel token; gli upload usano il presigned POST, non credenziali AWS nel browser | [cognito.md](cognito.md) |
-| **Account modificato e cancellato dal frontend direttamente con Cognito** | Le Lambda nella VPC non raggiungono Cognito. `PUT /users/me` dopo ogni login crea o aggiorna la riga; nuovo login di conferma, `DELETE /users/me`, poi `DeleteUser` (scope `aws.cognito.signin.user.admin` sull'app client), poi logout | [cognito.md](cognito.md#cancellazione-dellaccount), [lambda-users.md](lambda-users.md) |
+| **Account modificato e cancellato dal frontend direttamente con Cognito** | Le Lambda nella VPC non raggiungono Cognito. `PUT /users/me` dopo ogni login crea o aggiorna la riga con il solo `sub`; nuovo login di conferma, `DELETE /users/me`, poi `DeleteUser` (scope `aws.cognito.signin.user.admin` sull'app client), poi logout | [cognito.md](cognito.md#cancellazione-dellaccount), [lambda-users.md](lambda-users.md) |
 | Route esplicite, lettura degli annunci pubblica | Il preflight `OPTIONS` lo gestisce il CORS senza authorizer; un visitatore vede gli annunci | [api-gateway.md](api-gateway.md#route) |
 | CORS sull'HTTP API e sul bucket dei file | Il sito chiama due origini diverse | [api-gateway.md](api-gateway.md#cors), [s3.md](s3.md#cors-del-bucket-dei-file) |
 | Throttling sullo stage | Difesa dagli abusi; WAF non si associa a un'HTTP API | [api-gateway.md](api-gateway.md#throttling) |
@@ -67,8 +69,15 @@ futuri. Ogni riga rimanda al file del servizio che la spiega per intero.
 | --- | --- | --- |
 | SNS → SQS → Mailer Lambda → SES (non EventBridge) | SQS dà buffer e retry, SNS permette altri consumer senza toccare le Lambda; allineato al diagramma | [sns.md](sns.md) |
 | Pubblicano solo Property, Users e Offers | Sono le sole che generano eventi da notificare | [sns.md](sns.md#iam) |
-| L'evento contiene destinatario e dati dell'email | La Mailer non ha bisogno del database | [lambda-mailer.md](lambda-mailer.md) |
-| DLQ dopo 5 tentativi, visibility timeout 180 s (6 × 30 s), retention 4 giorni coda e 14 giorni DLQ | Nessun messaggio ritentato all'infinito; nessun messaggio che torna visibile a metà | [sqs.md](sqs.md) |
+| L'evento contiene `recipientSub` e i dati dell'email, non l'indirizzo | La Mailer non ha bisogno del database; l'email la chiede a Cognito con `AdminGetUser` | [sns.md](sns.md#formato-degli-eventi), [lambda-mailer.md](lambda-mailer.md#da-dove-arriva-lemail) |
+| DLQ dopo 5 ricezioni (`maxReceiveCount`), visibility timeout 180 s (6 × 30 s) | Raccomandazioni AWS per le code lette da Lambda: 5 lascia margine anche alle ricezioni perse per throttling; 180 s evita che un messaggio torni visibile a metà. Un messaggio che fallisce sempre arriva in DLQ in circa 15 minuti | [sqs.md](sqs.md#perché-5-ricezioni-e-180-secondi) |
+| Retention 4 giorni coda e 14 giorni DLQ | La scadenza si conta dall'ingresso nella coda originale: in DLQ un messaggio resta analizzabile almeno ~10 giorni | [sqs.md](sqs.md#retention-perché-14-giorni-nella-dlq-e-4-nella-coda) |
+| DLQ sulla coda, non sulla Lambda; niente DLQ su SNS né on-failure destination sulla Files Lambda | Con l'event source mapping SQS i fallimenti li gestisce la `RedrivePolicy` della coda; le destination di Lambda valgono per le invocazioni asincrone | [sqs.md](sqs.md#perché-la-dlq-sta-sulla-coda-e-non-sulla-lambda) |
+| Event source mapping: batch 10, finestra 0 s, `ReportBatchItemFailures`, concorrenza massima 2 | Batch parziali: un'email fallita non fa ripetere le altre né le spinge verso la DLQ; concorrenza al minimo consentito per proteggere SES in sandbox (1 email/s) e la quota di Cognito | [lambda-mailer.md](lambda-mailer.md#event-source-mapping) |
+| Errori temporanei ritentati, errori permanenti loggati e scartati | Ritentare un messaggio malformato, un utente cancellato o un destinatario rifiutato non serve; un metric filter con allarme li rende visibili | [lambda-mailer.md](lambda-mailer.md#classificazione-degli-errori) |
+| Doppioni rari delle email accettati | Coda standard at-least-once; deduplicare richiederebbe un database nella Mailer. I batch parziali li riducono | [lambda-mailer.md](lambda-mailer.md#idempotenza) |
+| Allarmi su DLQ non vuota ed età dei messaggi in coda, verso il topic `real-estate-prod-ops-alerts` con email del team | Qualcuno deve sapere che un'email non è partita | [cloudwatch.md](cloudwatch.md#configurazione) |
+| Redrive manuale con procedura scritta e policy dell'operatore `ops-dlq-redrive.json` | Si rimandano i messaggi solo dopo aver corretto la causa, a velocità bassa per non saturare SES | [sqs.md](sqs.md#procedura-operativa-quando-scatta-lallarme) |
 | Coda cifrata con SSE-SQS | SNS non consegna a una coda cifrata con `aws/sqs` | [kms.md](kms.md) |
 | `RawMessageDelivery` sulla sottoscrizione | La Mailer riceve il messaggio senza la busta JSON di SNS | [sns.md](sns.md#configurazione) |
 | SES via API, in sandbox per la demo | A Milano l'SMTP non c'è; la sandbox basta inviando a indirizzi verificati | [ses.md](ses.md) |
@@ -94,8 +103,6 @@ futuri. Ogni riga rimanda al file del servizio che la spiega per intero.
 | REST API | Costa di più; non ci servono usage plan, API key, validazione, cache | Se servisse WAF diretto o usage plan |
 | Una Lambda per route | Più funzioni da gestire | Permessi IAM più fini per singola route |
 | Lambda Authorizer per l'ownership | Cache condivisa tra le route o DB a ogni richiesta, latenza e cold start | Regole che l'authorizer JWT non sa esprimere, senza DB e fuori dalla VPC |
-| Access token verso l'API | Non contiene l'email; non usiamo scope | Con scope OAuth o app di terze parti (solo cambio di configurazione) |
-| Pre Token Generation Lambda | Complicazione inutile | — |
 | Identity pool | Non servono credenziali AWS nel browser | Accesso diretto dei client ai servizi AWS |
 | Trigger Cognito per creare la riga utente | `PUT /users/me` basta | — |
 | `AdminDeleteUser` dalla Users Lambda, interface endpoint `cognito-idp` o evento verso una Lambda fuori VPC | Dalla VPC non c'è strada; l'endpoint Cognito esiste ma con limiti | — |
@@ -116,6 +123,20 @@ futuri. Ogni riga rimanda al file del servizio che la spiega per intero.
 | Chiave KMS del cliente (CMK) | Le chiavi gestite bastano | Controllo e audit sulla chiave; servono key policy e `rds-proxy-decrypt-secrets.json` |
 | Lambda@Edge o CloudFront Functions | Il sito statico è pubblico, i dati stanno dietro l'API | — |
 
+### Alternative valutate per token ed email
+
+Per passare all'access token bisognava decidere da dove prendere l'email per le notifiche. Scelta: la Mailer la chiede
+a Cognito con `AdminGetUser` ([cognito.md](cognito.md#decisione-allapi-va-laccess-token)). Le altre strade valutate:
+
+| Alternativa | Perché scartata |
+| --- | --- |
+| **ID token all'API** (la scelta precedente) | L'ID token serve a identificare l'utente presso il client, non ad autorizzare le API; e porta l'email in ogni richiesta |
+| **Pre Token Generation Lambda** (evento V2_0, piano Essentials) che aggiunge `email` all'access token | Una Lambda in più su ogni emissione di token, e l'email di nuovo nel token, per un dato che serve solo alla Mailer |
+| **Endpoint `/oauth2/userInfo`** chiamato dalle Lambda con l'access token | Sta sul dominio del user pool: i domain endpoint non passano dagli interface endpoint (PrivateLink) e un user pool con dominio non è compatibile con PrivateLink. Senza NAT non si raggiunge dalla VPC ([fonte](https://docs.aws.amazon.com/cognito/latest/developerguide/vpc-interface-endpoints.html)) |
+| **Cache in memoria nella Lambda** (mappa LRU `sub` → email) | Le istanze sono tante, separate e di vita breve: la cache sarebbe quasi sempre vuota, e dalla VPC non c'è una fonte raggiungibile per riempirla. La cache vera è il database o, come scelto, Cognito stesso |
+| **ID token mandato come prova solo in `PUT /users/me`** e verificato con il JWKS | Legittimo, ma il JWKS va scaricato dalla VPC senza Internet; e l'email tornerebbe nel database |
+| **Lambda Authorizer** con `aws-jwt-verify` più `GetUser` (vedrebbe anche le revoche) | Verifica scritta da noi, una Lambda su ogni richiesta non in cache, latenza e un punto di rottura in più. Non serve se l'email la chiede la Mailer |
+
 ## Punti aperti
 
 | Domanda | Stato | Dove |
@@ -125,6 +146,8 @@ futuri. Ogni riga rimanda al file del servizio che la spiega per intero.
 | Formulazione "per sicurezza" sul proxy | All'orale può suonare come "sicurezza informatica" e far chiedere "quale?". Proposta, non applicata (scelta di parole del team): "per robustezza: le Lambda possono moltiplicare le connessioni, e il proxy ci dà anche l'autenticazione IAM e un failover più rapido" | [rds-proxy.md](rds-proxy.md#perché-cè) |
 | Diagramma valido | La versione di riferimento è [`real-estate-v2.drawio`](diagrammi/real-estate-v2.drawio), con tutti i flussi e i nomi dei ruoli; lo schema precedente di Tommaso (`updated.drawio`, con i ruoli ancora `_to_do`, senza API Gateway né frecce dei flussi) è in archivio. Il team deve confermare la v2 aprendola in draw.io; quando la si ritocca, allineare i nomi abbreviati (bucket, coda, DLQ) e il riquadro IAM che rimanda ancora ad `am-management/`, e aggiungere la freccia Property Lambda → gateway S3 per la cancellazione dei file di un immobile ([README](README.md#diagramma)) | [README](README.md#diagramma) |
 | Prove reali | Una connessione al proxy e il comportamento durante il failover del writer vanno verificati creando le risorse | [iam.md](iam.md#verifica-prima-delluso) |
+| Formato di `cognito:groups` nei claim | La documentazione mostra i claim come stringhe; il formato `"[buyer agent]"` dei claim lista va verificato alla prima prova (la funzione comune accetta anche un array) | [api-gateway.md](api-gateway.md#authorizer-jwt) |
+| CSP del sito | I domini della `Content-Security-Policy` vanno provati con la SPA vera | [cloudfront.md](cloudfront.md#header-di-sicurezza-response-headers-policy) |
 | Backup e retention di Aurora | Valori da fissare alla creazione | [aurora.md](aurora.md#punti-aperti) |
 
 ## Disponibilità dei servizi a Milano
@@ -142,6 +165,13 @@ Verificato anche sulla documentazione AWS: il ruolo del proxy (trust, `GetSecret
 `kms:ViaService`) è identico all'esempio ufficiale; prerequisiti di rete del proxy (2 subnet in AZ diverse, 10 IP
 liberi); nelle HTTP API la cache della Lambda Authorizer è facoltativa e per default vale per tutte le route, e
 l'access logging non richiede il ruolo CloudWatch dell'account; SNS non consegna a code cifrate con `aws/sqs`.
+Verificato anche: l'authorizer JWT controlla `client_id` quando manca `aud`, e l'access token di Cognito non ha `aud`
+senza resource binding; con `UsernameAttributes` lo `username` è un UUID uguale al `sub`, e `AdminGetUser` accetta il
+`sub`; `AdminGetUser` è nella categoria di quota UserRead e conta per i MAU; con il login gestito i token non vanno
+sotto l'ora; i domain endpoint di Cognito non passano da PrivateLink; visibility timeout 6 × timeout e
+`maxReceiveCount` almeno 5 per le code lette da Lambda; formato di `batchItemFailures`; concorrenza massima dell'event
+source mapping da 2 a 1000; scadenza nella DLQ contata dall'ingresso nella coda originale; DLQ sulla coda e non sulla
+funzione con SQS come event source; permessi minimi del redrive; `SecurityHeadersPolicy` senza CSP.
 Non verificato puntualmente: che WAF non si associ alle HTTP API; il bisogno dell'endpoint di Secrets Manager. Nessuna risorsa è stata creata su un account AWS.
 
 ## Sviluppi futuri
@@ -171,18 +201,31 @@ proxy, endpoint).
 4. Cosa succede se cade AZ-1, o solo il writer ([aurora.md](aurora.md#allorale)).
 5. Come si evita che un utente modifichi gli immobili di un altro ([lambda-property.md](lambda-property.md#allorale)).
 6. Come si fa caricare un video da 200 MB ([lambda-presigned.md](lambda-presigned.md#allorale)).
-7. Come si rende affidabile l'invio email se SES è giù ([ses.md](ses.md#allorale)).
+7. Come si rende affidabile l'invio email se SES è giù, e cosa si fa quando un messaggio arriva nella DLQ
+   ([ses.md](ses.md#allorale), [sqs.md](sqs.md#procedura-operativa-quando-scatta-lallarme)).
 8. Dove sta la password del database e chi la legge ([secrets-manager.md](secrets-manager.md#allorale)).
 9. Come pubblicare una nuova versione del sito senza che gli utenti vedano la cache vecchia ([cloudfront.md](cloudfront.md#allorale)).
 10. Come si monitora che il sistema funziona ([cloudwatch.md](cloudwatch.md#allorale)).
 11. Trust policy e permissions policy, execution role e resource policy, confused deputy, `PassRole` ([iam.md](iam.md#allorale)).
+12. Che token riceve l'API, da dove arriva l'email delle notifiche e cosa succede se un token viene rubato
+    ([cognito.md](cognito.md#allorale)).
 
 ## All'orale
 
 > **Qual è la scelta di cui siete meno sicuri?**
 > L'endpoint di Secrets Manager per il proxy: la documentazione non lo chiarisce, lo verifichiamo creando il proxy.
-> E l'ID token verso l'API: è una scelta motivata, ma sappiamo che la buona pratica per le API è l'access token con gli
-> scope, e il passaggio sarebbe solo di configurazione.
+> E il rischio residuo sui token: l'authorizer non vede le revoche, quindi un access token rubato vale fino a un'ora.
+> Lo dichiariamo; la soluzione sarebbe un BFF con cookie `HttpOnly`.
+>
+> **Perché avete cambiato da ID token ad access token?**
+> Il professore ce l'ha fatto notare: l'ID token è per il client, l'access token per le API. Il problema era l'email
+> per le notifiche, e lo abbiamo risolto facendola leggere alla Mailer da Cognito con `AdminGetUser`: nessun componente
+> nuovo, un permesso in più, e l'email è sparita da token, eventi e database.
+>
+> **La DLQ: cosa succede davvero a un'email che non parte?**
+> Errore temporaneo → il messaggio torna in coda dopo 180 s → dopo 5 ricezioni, circa 15 minuti, va nella DLQ →
+> l'allarme manda un'email al team → si trova la causa nei log, la si corregge e si fa il redrive. Gli errori permanenti
+> non si ritentano: si loggano e un metric filter li conta.
 >
 > **Perché non EventBridge?**
 > Il diagramma e il piano usano SNS: basta per il fan-out, e da una Lambda in VPC EventBridge avrebbe chiesto un altro
@@ -193,7 +236,7 @@ proxy, endpoint).
 > Infrastructure as Code (come un `docker-compose.yml`, ma per tutta l'infrastruttura AWS).
 >
 > **Cosa avete fatto bene, secondo voi?**
-> Ogni scelta ha un motivo scritto e un limite dichiarato (il proxy "non strettamente necessario", l'ID token); le
+> Ogni scelta ha un motivo scritto e un limite dichiarato (il proxy "non strettamente necessario", le revoche dei token); le
 > domande vere del team sono documentate con la decisione presa; database privato su due AZ, nessun accesso diretto
 > Lambda → Aurora; least privilege con un ruolo per Lambda e trust separate; nessuna password nel repository; ordine di
 > creazione dichiarato; i JSON dichiarati come template, non come risorse esistenti.

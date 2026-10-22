@@ -23,8 +23,10 @@ Regole comuni (VPC, connessione al DB, policy gestite): [lambda.md](lambda.md).
 | `POST /properties` | JWT | gruppo `agent` in `cognito:groups`; il proprietario è il `sub` del token |
 | `PUT /properties/{id}`, `DELETE /properties/{id}` | JWT | ownership (`WHERE id = :id AND owner_id = :sub`) oppure gruppo `admin` |
 
-L'handler fa da router interno dello scope. Gli eventi pubblicati contengono già destinatario e dati dell'email, così la
-Mailer non deve leggere il database.
+L'handler fa da router interno dello scope. Gli eventi pubblicati portano il destinatario come `recipientSub` (il `sub`
+del proprietario o dell'utente interessato) e i dati che servono all'email (per esempio titolo e ID dell'immobile), così
+la Mailer non deve leggere il database. L'email del destinatario non c'è: la Mailer la chiede a Cognito
+([sns.md](sns.md#formato-degli-eventi)).
 
 ### Cancellazione di un immobile
 
@@ -89,6 +91,23 @@ File: [`iam/policies/lambda-property.json`](iam/policies/lambda-property.json)
       "Effect": "Allow",
       "Action": "sns:Publish",
       "Resource": "arn:aws:sns:eu-south-1:<ACCOUNT_ID>:real-estate-prod-notifications"
+    },
+    {
+      "Sid": "ListFilesOfDeletedProperty",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::real-estate-prod-files-<SUFFIX>",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": "uploads/*"
+        }
+      }
+    },
+    {
+      "Sid": "DeleteFilesOfDeletedProperty",
+      "Effect": "Allow",
+      "Action": "s3:DeleteObject",
+      "Resource": "arn:aws:s3:::real-estate-prod-files-<SUFFIX>/uploads/*"
     }
   ]
 }

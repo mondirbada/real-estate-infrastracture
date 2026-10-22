@@ -12,6 +12,12 @@
       "Resource": "arn:aws:sqs:eu-south-1:<ACCOUNT_ID>:real-estate-prod-notifications-queue"
     },
     {
+      "Sid": "ReadRecipientEmailFromUserPool",
+      "Effect": "Allow",
+      "Action": "cognito-idp:AdminGetUser",
+      "Resource": "arn:aws:cognito-idp:eu-south-1:<ACCOUNT_ID>:userpool/<USER_POOL_ID>"
+    },
+    {
       "Sid": "SendEmailFromProjectAddressOnly",
       "Effect": "Allow",
       "Action": "ses:SendEmail",

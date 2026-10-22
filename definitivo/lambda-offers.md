@@ -24,7 +24,9 @@ Regole comuni: [lambda.md](lambda.md).
 | `DELETE /offers/{id}` | JWT | chi ha fatto l'offerta o il proprietario dell'immobile |
 
 Una nuova offerta pubblica un evento per il proprietario dell'immobile; l'accettazione o il rifiuto un evento per
-l'acquirente. L'evento contiene destinatario e dati dell'email ([sns.md](sns.md)).
+l'acquirente. L'evento porta il destinatario come `recipientSub` (il `owner_id` dell'immobile o il `sub` di chi ha fatto
+l'offerta, letti dal database) e i dati dell'offerta, **non l'email** ([sns.md](sns.md#formato-degli-eventi)). Chi fa
+l'offerta è sempre il `sub` dei claim, mai un campo del body.
 
 ## Configurazione
 
@@ -73,7 +75,7 @@ Chi la può invocare: API Gateway ([`lambda-allow-api-gateway.json`](iam/resourc
 ## All'orale
 
 > **Seguimi "crea un'offerta" dal clic al database.**
-> ID token all'HTTP API, authorizer JWT, invocazione della Offers (resource policy), controllo del gruppo `buyer`,
+> Access token all'HTTP API, authorizer JWT, invocazione della Offers (resource policy), controllo del gruppo `buyer`,
 > token IAM e connessione TLS al proxy come `offers_user`, proxy → Aurora con la password del secret, poi `sns:Publish`
 > sul topic attraverso l'endpoint SNS.
 >
@@ -85,5 +87,6 @@ Chi la può invocare: API Gateway ([`lambda-allow-api-gateway.json`](iam/resourc
 > come pubblicare un evento invece di chiamare il servizio email dentro la transazione.
 >
 > **Il proprietario come viene avvisato?**
-> L'evento "nuova offerta" contiene la sua email (presa dal database, dove `PUT /users/me` l'ha salvata dall'ID token);
-> la Mailer la invia con SES.
+> La Offers legge dal database il `owner_id` dell'immobile, cioè il `sub` del proprietario, e pubblica l'evento "nuova
+> offerta" con `recipientSub`. La Mailer chiede a Cognito l'email di quel `sub` con `AdminGetUser` e la invia con SES.
+> L'email non passa mai dalla Offers né dal database.
