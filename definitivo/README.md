@@ -14,19 +14,19 @@ La documentazione descrive la configurazione prevista: non attesta risorse già 
 
 ## Diagramma
 
-![Diagramma dell'infrastruttura](diagrammi/real-estate-v2.png)
+![Diagramma dell'infrastruttura](diagrammi/real-estate-v3.png)
 
-Sorgente modificabile con draw.io: [`diagrammi/real-estate-v2.drawio`](diagrammi/real-estate-v2.drawio).
+Sorgente modificabile con draw.io: [`diagrammi/real-estate-v3.drawio`](diagrammi/real-estate-v3.drawio). La versione
+precedente, [`real-estate-v2.drawio`](diagrammi/real-estate-v2.drawio), resta per confronto: la v3 aggiunge l'access
+token verso l'API, la Mailer che chiede l'email a Cognito (`AdminGetUser`) e il ciclo completo della DLQ (5 ricezioni,
+allarme, topic `real-estate-prod-ops-alerts`, redrive manuale).
 Legenda del diagramma: freccia piena = richiesta o dati; freccia tratteggiata = controllo, asincrono o "da verificare";
 frecce blu numerate 1-5 = ordine del percorso dell'utente (1 scarica la SPA, 2 login e gestione account, 3 chiamate API
-con JWT, 4 upload con presigned POST, 5 lettura dei file pubblici); riquadro verde tratteggiato = security group;
-icona del casco = ruolo IAM (execution role).
+con l'access token, 4 upload con presigned POST, 5 lettura dei file pubblici); riquadro verde tratteggiato = security
+group; icona del casco = ruolo IAM (execution role).
 
-Nel diagramma alcuni nomi sono abbreviati: i bucket senza `-<SUFFIX>`, coda e DLQ senza il prefisso `real-estate-prod-`
-(i nomi completi sono `real-estate-prod-notifications-queue` e `real-estate-prod-notifications-dlq`), le Lambda con il
-nome breve (Property Lambda = `real-estate-prod-property`). Il riquadro IAM rimanda ancora ad `am-management/`, che ora è
-in archivio: ruoli e policy sono in [iam.md](iam.md). Manca la freccia Property Lambda → gateway S3, usata quando si
-cancella un immobile per togliere i suoi file ([lambda-property.md](lambda-property.md#cancellazione-di-un-immobile)).
+Nel diagramma le Lambda hanno il nome breve (Property Lambda = `real-estate-prod-property`); bucket, coda e DLQ hanno il
+nome completo.
 
 ## Mappa dei file
 
