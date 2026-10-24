@@ -231,6 +231,8 @@ Sequenza nella SPA:
 
 1. **Conferma con un nuovo login.** `DeleteUser` non chiede la password: chi avesse rubato un access token valido potrebbe
    cancellare l'account. Prima di un'operazione irreversibile la SPA fa rifare il login, così il token è appena emesso.
+   Con il login gestito il cookie di sessione vale un'ora e salterebbe la password: la SPA apre il login con
+   `prompt=login`, che forza una nuova autenticazione (da verificare sulla configurazione del login gestito).
 2. **`DELETE /users/me`**: la Users Lambda cancella o anonimizza i dati applicativi.
 3. **`DeleteUser`** su Cognito con l'access token.
 4. **Logout**: la SPA toglie dalla memoria tutti i token.

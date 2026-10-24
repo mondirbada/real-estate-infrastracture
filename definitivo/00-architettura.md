@@ -134,8 +134,8 @@ Tre idee tengono insieme il progetto:
 
 ### 9. Modifica e cancellazione dell'account
 
-- Cambio password o email: la SPA chiama Cognito direttamente (`UpdateUserAttributes`, con l'access token
-  dell'utente) ([cognito.md](cognito.md)). Nel database non c'è nulla da riallineare: l'email sta solo in Cognito e la
+- Cambio password o email: la SPA chiama Cognito direttamente (`ChangePassword` o `UpdateUserAttributes`, con
+  l'access token dell'utente) ([cognito.md](cognito.md)). Nel database non c'è nulla da riallineare: l'email sta solo in Cognito e la
   Mailer legge sempre quella attuale.
 - Cancellazione: la SPA chiama prima `DELETE /users/me` (la Users Lambda cancella o anonimizza i dati applicativi) e poi
   `DeleteUser` di Cognito. Se il secondo passo fallisce l'account esiste ancora e l'utente può ripetere la cancellazione;

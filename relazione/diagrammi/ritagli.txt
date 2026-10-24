@@ -1,0 +1,9 @@
+# vista  x0 y0 x1 y1, in coordinate del PNG della v3 ridotto a 2000 px di larghezza
+spa            0    0  620  830
+api            0  670 1300 1115
+database     440  880 1960 1430
+file           0   40 1000 1115
+notifiche      0    0 2000 1100
+account        0  670 1530 1425
+osservabilita 180 280 1960 1495
+rete         430  655 1960 1460

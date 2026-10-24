@@ -1,0 +1,148 @@
+// 5. Decisioni e alternative scartate
+module.exports = ({ S }) => {
+  const { p, h1, h2, h3, punto, tabella, dopoTabella } = S;
+  const L = [2500, 3800, 3300];
+  const H = ["Decisione", "Motivo", "Alternative scartate"];
+  return [
+  h1("5. Decisioni e alternative scartate"),
+  p("Ogni scelta importante ha un motivo scritto e un'alternativa che abbiamo considerato e lasciato. Le tabelle seguenti le raccolgono per area; nei flussi del capitolo 4 le stesse scelte compaiono nelle tabelle *Perché così*, qui sono viste insieme. Seguono le due decisioni che abbiamo discusso con il docente, trattate più a fondo, e i punti che restano da verificare."),
+
+  h2("5.1 Le decisioni principali, per area"),
+  h3("Architettura e rete"),
+  tabella(H, [
+    ["Architettura serverless", "traffico basso e variabile: si paga per richiesta, scala da zero, nessun server da gestire", "container su ECS Fargate (sempre accesi, costo fisso)"],
+    ["Regione `eu-south-1` (Milano)", "dati in Italia e latenza bassa; tutti i servizi usati ci sono. È una regione *opt-in*, da abilitare nell'account", "Francoforte o Irlanda: funzioni nuove subito e nessun opt-in, ma dati fuori dall'Italia"],
+    ["VPC `10.0.0.0/16` con due sottoreti private `/24` in due zone", "il subnet group di Aurora e il proxy chiedono due zone; le `/24` lasciano spazio alle interfacce di rete (il proxy vuole almeno 10 IP liberi per sottorete)", "—"],
+    ["Nessuna sottorete pubblica, Internet Gateway o NAT", "il traffico utente entra da CloudFront e API Gateway, fuori dalla VPC; non chiamiamo API esterne", "NAT Gateway: costo fisso orario per niente; si aggiungerebbe se servisse un'API esterna"],
+    ["Endpoint VPC: interface per SNS e Secrets Manager, gateway per S3", "unico modo per raggiungere i servizi AWS senza NAT; il gateway S3 è gratuito", "NAT Gateway"],
+    ["Security group solo sulle risorse nella VPC, con regole da gruppo a gruppo", "i servizi fuori dalla VPC non hanno interfacce di rete; le regole tra gruppi restano valide quando cambiano gli IP", "regole basate su intervalli di indirizzi"],
+    ["Nessun PrivateLink per Cognito", "le Lambda nella VPC non chiamano Cognito: l'authorizer valida i token da sé, la Mailer è fuori dalla VPC", "interface endpoint `cognito-idp`: costo e limiti senza necessità"],
+  ], L),
+  dopoTabella(),
+
+  h3("Frontend e storage"),
+  tabella(H, [
+    ["Bucket del sito privato, letto da CloudFront con OAC", "nessun accesso diretto, HTTPS e cache", "static website hosting su bucket pubblico"],
+    ["Errori 403 e 404 → `/index.html` sul sito", "routing della SPA; il 403 perché CloudFront non ha `s3:ListBucket`", "pagina di errore del bucket"],
+    ["Due distribuzioni CloudFront, sito e file", "la regola SPA vale per tutta la distribuzione e non deve toccare i file; cache ed errori diversi", "una distribuzione con un behavior `/files/*`"],
+    ["File degli annunci pubblici tramite CloudFront, bucket privato", "sono foto e video di annunci: chi ha il link li vede", "signed URL di CloudFront o presigned GET: avrebbero senso solo per documenti privati (contratti, documenti d'identità)"],
+    ["Upload diretto con presigned POST, firmato dalla Presigned Lambda", "il file non passa dal backend (limiti di 10 MB e 6 MB); solo il POST permette di limitare la dimensione", "presigned PUT: non limita la dimensione; upload attraverso l'API"],
+    ["Chiave decisa dalla Lambda, scadenza 5 minuti, un solo prefisso di `Content-Type` per firma", "il client non sceglie dove scrivere", "chiave scelta dal client"],
+    ["Notifica S3 `ObjectCreated` su `uploads/` verso la Files Lambda", "il database si aggiorna solo con gli upload riusciti, senza fidarsi del client", "conferma dal client (`POST /files/confirm`): il client può mentire o non chiamare"],
+    ["Gateway endpoint S3 per cancellare i file", "la cancellazione parte da Lambda nella VPC; il gateway è gratuito", "evento SNS verso la Files Lambda: servirebbe una coda o un altro endpoint; lifecycle rule: non sanno se l'immobile esiste"],
+    ["Block Public Access e ACL disattivate su entrambi i bucket", "i file sono pubblici solo tramite CloudFront", "—"],
+    ["Dominio `*.cloudfront.net` per la presentazione", "un dominio personalizzato richiederebbe un certificato ACM in `us-east-1`", "dominio personalizzato (sviluppo futuro)"],
+  ], L),
+  dopoTabella(),
+
+  h3("Autenticazione e API"),
+  tabella(H, [
+    ["HTTP API", "costa meno e ha authorizer JWT e CORS integrati: tutto ciò che serve", "REST API: usage plan, API key, validazione e WAF diretto che non ci servono"],
+    ["Authorizer JWT nativo", "verifica firma, issuer, `client_id` e scadenza senza codice nostro e senza chiamare Cognito", "Lambda Authorizer, anche per l'ownership: una Lambda in più a ogni richiesta, e la sua cache vale per tutte le route"],
+    ["Autorizzazione su due livelli: ruolo e ownership", "l'authorizer sa chi sei; se la risorsa è tua lo sa solo il database", "—"],
+    ["Gruppi `buyer`, `agent`, `admin`; solo user pool", "i ruoli arrivano nel token; gli upload usano il presigned POST", "identity pool: credenziali AWS nel browser che non servono"],
+    ["Access token verso l'API (vedi 5.2)", "buona pratica OIDC: l'access token autorizza le API", "ID token all'API; Pre Token Generation; `userInfo`; cache; Lambda Authorizer"],
+    ["Token di 60 minuti", "con il login gestito AWS sconsiglia di scendere sotto l'ora", "token più corti: non accorcerebbero la sessione"],
+    ["Token in memoria, CSP, revoca al logout", "difese contro il furto del token; il rischio residuo è dichiarato nel capitolo 6", "BFF con cookie `HttpOnly`"],
+    ["Account modificato e cancellato dal frontend direttamente con Cognito", "le Lambda nella VPC non raggiungono Cognito", "`AdminDeleteUser` dalla Users Lambda; trigger Cognito per creare la riga utente (basta `PUT /users/me`)"],
+    ["Route esplicite, lettura degli annunci pubblica", "il preflight lo gestisce il CORS senza authorizer; un visitatore vede gli annunci", "—"],
+    ["Throttling sullo stage", "difesa dagli abusi", "WAF: non si associa direttamente a un'HTTP API"],
+  ], L),
+  dopoTabella(),
+
+  h3("Business logic e dati"),
+  tabella(H, [
+    ["Cinque Lambda di business, una per scope con router interno, più la Mailer", "semplicità, come un controller per risorsa; un ruolo IAM per scope", "una Lambda per route: permessi più fini ma più funzioni da gestire"],
+    ["In VPC solo le Lambda che usano il database", "il proxy esiste solo nella VPC", "tutte nella VPC: endpoint, cold start e costi in più"],
+    ["Presigned Lambda dentro la VPC, Mailer fuori", "la prima controlla l'ownership nel database; la seconda non lo usa", "—"],
+    ["Aurora PostgreSQL con writer e reader su due zone", "dati relazionali; failover automatico e storage replicato", "Aurora Serverless v2 (più economica a carico basso); RDS Multi-AZ"],
+    ["RDS Proxy", "pooling delle connessioni, autenticazione IAM, failover più rapido. Non è strettamente necessario con il nostro traffico", "nessun proxy: rischio di esaurire `max_connections`"],
+    ["Lambda → proxy con IAM e TLS; proxy → Aurora con la password del secret", "nessuna password nelle Lambda", "IAM end-to-end sul proxy: più semplice ma meno comune"],
+    ["Un utente PostgreSQL e un secret per ogni Lambda", "IAM decide chi entra con quale utente, i `GRANT` cosa può fare", "—"],
+    ["Connessione aperta fuori dall'handler", "riuso tra le invocazioni", "—"],
+  ], L),
+  dopoTabella(),
+
+  h3("Notifiche"),
+  tabella(H, [
+    ["SNS → SQS → Mailer → SES", "SQS dà buffer e retry; SNS permette altri consumer senza toccare le Lambda", "EventBridge (servirebbe un endpoint in più); solo SQS senza SNS"],
+    ["L'evento porta `recipientSub`, non l'indirizzo", "nessun dato personale in coda, log o database; l'email è sempre aggiornata", "email nell'evento o nel database"],
+    ["DLQ dopo 5 ricezioni, visibility timeout 180 s", "raccomandazioni AWS per le code lette da Lambda (vedi 5.3)", "valori più bassi: i picchi manderebbero messaggi validi nella DLQ"],
+    ["Retention 4 giorni sulla coda, 14 sulla DLQ", "la scadenza si conta dall'ingresso nella coda originale: in DLQ un messaggio resta analizzabile per circa 10 giorni", "—"],
+    ["DLQ sulla coda, non sulla Lambda", "con SQS come sorgente i fallimenti li gestisce la `RedrivePolicy`", "DLQ o on-failure destination sulla Lambda: valgono per le invocazioni asincrone"],
+    ["Batch parziali e concorrenza massima 2", "un'email fallita non fa ripetere le altre; SES in sandbox accetta 1 email al secondo", "batch intero: duplicati e messaggi buoni spinti verso la DLQ"],
+    ["Errori temporanei ritentati, permanenti loggati e scartati", "ritentare un messaggio malformato non serve; un metric filter li rende visibili", "ritentare tutto"],
+    ["Doppioni rari accettati", "coda standard *at-least-once*; deduplicare richiederebbe un database nella Mailer", "deduplica con un database nella Mailer"],
+    ["Allarmi e redrive manuale con policy dell'operatore", "qualcuno deve sapere che un'email non è partita; si rimanda dopo aver corretto la causa", "redrive automatico: ripeterebbe un errore non risolto"],
+    ["Coda cifrata con SSE-SQS", "SNS non consegna a una coda cifrata con `aws/sqs`", "chiave `aws/sqs`: SNS non consegnerebbe"],
+    ["SES via API, in sandbox per la demo", "a Milano l'SMTP non c'è; la sandbox basta con indirizzi verificati", "SMTP: non disponibile a Milano"],
+  ], L),
+  dopoTabella(),
+
+  h3("IAM e sicurezza"),
+  tabella(H, [
+    ["Nomi espliciti `real-estate-<ambiente>-<componente>-<scopo>`", "si capisce a colpo d'occhio cosa fa ogni ruolo; ID reali come segnaposto in Git", "—"],
+    ["Un execution role per Lambda, policy del progetto sugli ARN precisi; gestite solo per log e VPC", "least privilege e audit chiari; le azioni sulle interfacce di rete richiedono comunque `Resource: \"*\"`", "policy gestite anche per SQS e simili: comode ma larghe (`Resource: \"*\"`)"],
+    ["`aws:SourceArn` (e `aws:SourceAccount` per S3) in tutte le resource policy verso servizi", "prevenire il confused deputy", "principal di servizio senza condizioni"],
+    ["Deny delle richieste senza TLS sui bucket; TLS obbligatorio sul proxy e verso Aurora", "cifratura in transito ovunque", "—"],
+    ["Cifratura a riposo senza chiavi del cliente: `aws/rds` e `aws/secretsmanager` in KMS, SSE-S3 per i bucket, SSE-SQS per le code", "gratuite, nessuna key policy da scrivere", "chiave KMS del cliente: controllo e audit, ma key policy da scrivere"],
+    ["`iam:PassRole` dell'identità di deploy limitato ai ruoli del progetto", "non si può prestare un ruolo a un altro servizio", "—"],
+    ["Endpoint policy sull'endpoint SNS", "least privilege anche sulla rete", "—"],
+  ], L),
+  dopoTabella(),
+
+  h2("5.2 L'access token al posto dell'ID token"),
+  p("Questa è la decisione che ci ha fatto cambiare strada dopo una discussione con il docente. Nella prima versione il frontend mandava all'API l'**ID token**, perché conteneva l'email, che serviva per le notifiche. Il docente ci ha fatto notare che l'ID token serve a dire al *client* chi è l'utente, mentre per autorizzare le chiamate alle API si usa l'**access token**: usarlo come credenziale per l'API non è la pratica corretta, e inoltre porta l'email in ogni richiesta."),
+  p("Passare all'access token è facile; il problema è che nell'access token l'email non c'è, e le notifiche la richiedono. Bisognava decidere da dove prenderla."),
+  p("**La scelta.** L'API riceve l'access token, con l'authorizer JWT nativo che controlla `client_id` (4.2). Gli eventi di notifica portano `recipientSub` e la **Mailer legge l'email da Cognito** con `AdminGetUser` (4.5). Il database non ha l'email."),
+  tabella(
+    ["Vantaggi", "Svantaggi"],
+    [
+      ["nessuna email nei token, nelle richieste, negli eventi o nel database", "la Mailer dipende da Cognito: se non risponde, i messaggi vengono ritentati e poi vanno nella DLQ"],
+      ["l'email è sempre quella attuale", "il ruolo della Mailer può leggere gli utenti del pool"],
+      ["meno dati personali nel database", "una chiamata in più a Cognito per ogni notifica (conta per le quote)"],
+      ["nessun componente nuovo", ""],
+    ],
+    [4800, 4800],
+  ),
+  dopoTabella(),
+  p("**Le alternative valutate.** Prima di arrivarci abbiamo considerato altre cinque strade, e ognuna aveva un ostacolo concreto."),
+  tabella(
+    ["Alternativa", "Perché l'abbiamo scartata"],
+    [
+      ["**ID token all'API** (la scelta precedente)", "serve a identificare l'utente presso il client, non ad autorizzare le API; e porta l'email in ogni richiesta"],
+      ["**Pre Token Generation Lambda** che aggiunge `email` all'access token", "una Lambda in più su ogni emissione di token, e l'email di nuovo nel token, per un dato che serve solo alla Mailer"],
+      ["**Endpoint `/oauth2/userInfo`** chiamato dalle Lambda", "sta sul dominio del user pool: i domain endpoint non passano dagli interface endpoint e un pool con dominio non è compatibile con PrivateLink; senza NAT dalla VPC non si raggiunge"],
+      ["**Cache in memoria nella Lambda** (`sub` → email)", "le istanze sono tante e di vita breve, la cache sarebbe quasi sempre vuota; dalla VPC non c'è una fonte da cui riempirla"],
+      ["**ID token inviato come prova solo in `PUT /users/me`**", "il JWKS andrebbe scaricato dalla VPC senza Internet, e l'email tornerebbe nel database"],
+      ["**Lambda Authorizer** con verifica scritta da noi e `GetUser`", "una Lambda su ogni richiesta non in cache, latenza e un punto di rottura in più; vedrebbe anche le revoche, ma non serve se l'email la chiede la Mailer"],
+    ],
+    [3600, 6000],
+  ),
+  dopoTabella(),
+
+  h2("5.3 La dead-letter queue"),
+  p("L'altra parte discussa con il docente è la gestione di ciò che non riesce: cosa succede a un'email che non parte. Il ragionamento completo, con la tabella dei tentativi, è nel 4.5; le decisioni sono nella tabella *Notifiche* del 5.1. In sintesi:"),
+  punto("**5 ricezioni e 180 secondi, legati tra loro**: sei volte il timeout di 30 secondi della Mailer e il minimo raccomandato per le code lette da Lambda. Un messaggio che fallisce sempre arriva nella DLQ in circa 15 minuti."),
+  punto("**La DLQ sta sulla coda**, con la `RedrivePolicy`: lo spostamento lo fa SQS, senza permessi IAM. Retention di 4 giorni sulla coda e 14 sulla DLQ."),
+  punto("**Batch parziali ed errori classificati**: si ritenta solo il messaggio fallito, e solo per un errore temporaneo; gli errori permanenti si contano con un metric filter."),
+  punto("**Allarme e redrive manuale**, con una policy dedicata all'operatore: si rimanda in coda solo dopo aver corretto la causa."),
+
+  h2("5.4 Punti ancora aperti"),
+  p("Sono le domande che la documentazione dà come da verificare. Nessuna risorsa è stata ancora creata, quindi la maggior parte si chiude solo provando."),
+  tabella(
+    ["Punto", "Stato"],
+    [
+      ["**Endpoint di Secrets Manager per il proxy**: serve?", "La documentazione AWS non lo dice. Si verifica alla creazione del proxy: se il target risulta `AVAILABLE` senza endpoint, lo si toglie (con la regola di security group relativa) e si risparmia"],
+      ["**Uso della reader di Aurora**", "Oggi solo failover: l'endpoint di default del proxy va al writer. Per distribuire le letture serve un endpoint di sola lettura del proxy"],
+      ["Prove reali", "Una connessione al proxy e il comportamento durante il failover del writer vanno verificati creando le risorse"],
+      ["Formato di `cognito:groups` nei claim", "La documentazione mostra i claim come stringhe, per esempio `\"[buyer agent]\"`: va verificato alla prima prova (la funzione comune accetta anche un array)"],
+      ["CSP del sito", "I domini della Content-Security-Policy vanno provati con la SPA vera"],
+      ["Backup e retention di Aurora", "Valori da fissare alla creazione"],
+    ],
+    [3400, 6200],
+  ),
+  dopoTabella(),
+  p("Non abbiamo verificato puntualmente due affermazioni: che AWS WAF non si associ direttamente alle HTTP API, e il bisogno dell'endpoint di Secrets Manager. Tutto il resto delle verifiche sulla documentazione AWS (formato di `batchItemFailures`, permessi del redrive, `SecurityHeadersPolicy` senza CSP, claim `client_id` al posto di `aud`, e così via) è stato controllato."),
+  ];
+};

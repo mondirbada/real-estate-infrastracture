@@ -134,7 +134,8 @@ File: [`iam/resource-policies/lambda-files-allow-s3.json`](iam/resource-policies
 - Principal `s3.amazonaws.com`, azione `lambda:InvokeFunction`.
 - `AWS:SourceArn` = il bucket dei file: solo il nostro bucket.
 - `AWS:SourceAccount` = il nostro account: gli ARN dei bucket non contengono l'account, quindi questa seconda
-  condizione evita che un bucket omonimo in un altro account possa invocare la funzione.
+  condizione evita che, se il bucket venisse cancellato, un altro account che ricrea un bucket con lo stesso nome possa
+  invocare la funzione (i nomi dei bucket sono unici, ma si liberano quando un bucket viene cancellato).
 - Va creata **prima** della configurazione di notifica sul bucket, altrimenti S3 la rifiuta.
 
 ## Sicurezza e rete

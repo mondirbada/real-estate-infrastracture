@@ -95,8 +95,9 @@ Quando il servizio A chiama il servizio B, la domanda è "chi autorizza?", e i c
 ### Confused deputy
 
 Un servizio AWS che agisce per conto di più clienti potrebbe essere usato da un altro account per arrivare alle nostre
-risorse. Le condizioni `aws:SourceArn` (solo la nostra API, distribuzione, topic, bucket) e `aws:SourceAccount` (solo il
-nostro account) lo impediscono: tutte le resource policy del progetto verso servizi AWS le hanno.
+risorse. La condizione `aws:SourceArn` (solo la nostra API, distribuzione, topic, bucket) lo impedisce: tutte le
+resource policy del progetto verso servizi AWS la hanno. Verso S3 si aggiunge `aws:SourceAccount` (solo il nostro
+account), perché l'ARN di un bucket non contiene l'account.
 
 ### `iam:PassRole`
 
