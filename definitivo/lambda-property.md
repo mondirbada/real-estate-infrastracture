@@ -19,9 +19,12 @@ Regole comuni (VPC, connessione al DB, policy gestite): [lambda.md](lambda.md).
 
 | Route | Accesso | Cosa controlla la Lambda |
 | --- | --- | --- |
-| `GET /properties`, `GET /properties/{id}` | pubblica | — |
-| `POST /properties` | JWT | gruppo `agent` in `cognito:groups`; il proprietario è il `sub` del token |
-| `PUT /properties/{id}`, `DELETE /properties/{id}` | JWT | ownership (`WHERE id = :id AND owner_id = :sub`) oppure gruppo `admin` |
+| `GET /properties`, `GET /properties/{id}` | pubblica | l'elenco mostra solo gli immobili `active`; il dettaglio di uno ritirato non riporta l'agente ([sotto](#immobili-ritirati)) |
+| `POST /properties` | JWT | utente attivo; gruppo `agent` in `cognito:groups`; il proprietario è il `sub` del token |
+| `PUT /properties/{id}`, `DELETE /properties/{id}` | JWT | utente attivo; ownership (`WHERE id = :id AND owner_id = :sub`) oppure gruppo `admin`. Un immobile ritirato non si modifica (409); l'`admin` lo può cancellare |
+
+"Utente attivo" vuol dire che la riga `users` del `sub` non ha `deleted_at`, altrimenti 403: è il controllo
+`requireActiveUser` comune alle Lambda ([api-gateway.md](api-gateway.md#authorizer-jwt)).
 
 L'handler fa da router interno dello scope. Gli eventi pubblicati portano il destinatario come `recipientSub` (il `sub`
 del proprietario o dell'utente interessato) e i dati che servono all'email (per esempio titolo e ID dell'immobile), così
@@ -61,6 +64,21 @@ Casi limite:
 - **Cache di CloudFront.** Un file già in cache sugli edge può essere servito fino alla scadenza del TTL. Non si invalida
   dalla Lambda: l'API di CloudFront non è raggiungibile dalla VPC senza Internet, e il link non è più elencato da nessuna
   parte.
+
+### Immobili ritirati
+
+Un immobile ha `status` = `active` oppure `withdrawn` ([aurora.md](aurora.md#dati-personali-niente-email-nel-database)).
+Oggi diventa `withdrawn` in un solo caso: quando il proprietario cancella l'account, e a cambiarlo è la Users Lambda
+nella transazione di `DELETE /users/me` ([lambda-users.md](lambda-users.md#cancellazione-dellaccount-anonimizzazione)).
+Un immobile ritirato:
+
+- **non compare** in `GET /properties` (`WHERE status = 'active'`);
+- in `GET /properties/{id}` risponde con lo stato ritirato e **senza `owner_id`**: la SPA non mostra né collega il
+  profilo dell'agente, che del resto `GET /users/{id}` non restituisce più (404);
+- **non riceve nuove offerte** (la Offers risponde 409) **né upload** (la Presigned risponde 409);
+- non si modifica con `PUT` (409). L'`admin` può cancellarlo con `DELETE`, che toglie anche i file da S3.
+
+I suoi file restano su S3 e nel database: sono le foto della casa, non dati personali dell'utente.
 
 ## Configurazione
 
@@ -154,6 +172,10 @@ e `<FUNCTION_NAME>` = `real-estate-prod-property` ([api-gateway.md](api-gateway.
 > **Perché la Property ha `s3:ListBucket` sul bucket e `s3:DeleteObject` sugli oggetti?**
 > Sono due livelli di risorsa diversi: elencare è un'azione sul bucket (`arn:aws:s3:::bucket`, limitata con
 > `s3:prefix`), cancellare è un'azione sull'oggetto (`arn:aws:s3:::bucket/uploads/*`).
+>
+> **Cosa succede agli annunci di un agente che cancella l'account?**
+> Restano nel database ritirati (`status = 'withdrawn'`): spariscono dagli elenchi, il dettaglio non mostra l'agente,
+> non ricevono offerte né upload. Li ritira la Users Lambda nella stessa transazione che anonimizza il profilo.
 >
 > **Cosa può fare questa Lambda nel database?**
 > Entra nel proxy solo come `property_user`; cosa può fare sulle tabelle lo decidono i `GRANT` di quell'utente.

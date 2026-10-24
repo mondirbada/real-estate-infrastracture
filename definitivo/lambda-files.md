@@ -20,9 +20,9 @@ Prima di lei: la [Presigned Lambda](lambda-presigned.md) firma l'upload. Regole 
 
 | Evento | Accesso | Cosa fa |
 | --- | --- | --- |
-| Notifica S3 `ObjectCreated` su `uploads/` | solo S3 del nostro bucket | Registra il file nel database: chiave, immobile (dalla chiave `uploads/<propertyId>/...`), dimensione. I dati arrivano nell'evento. Se l'immobile non esiste più (upload finito dopo la sua cancellazione) non registra niente e cancella l'oggetto |
+| Notifica S3 `ObjectCreated` su `uploads/` | solo S3 del nostro bucket | Registra il file nel database: chiave, immobile (dalla chiave `uploads/<propertyId>/...`), dimensione. I dati arrivano nell'evento. Se l'immobile non esiste più (upload finito dopo la sua cancellazione) o è ritirato (upload finito dopo la cancellazione dell'account del proprietario) non registra niente e cancella l'oggetto |
 | `GET /properties/{id}/files` | pubblica | Elenco dei file dell'immobile; il browser li scarica dalla distribuzione CloudFront dei file |
-| `DELETE /files/{id}` | JWT, proprietario | Controlla l'ownership, toglie la riga dal database e cancella l'oggetto su S3 |
+| `DELETE /files/{id}` | JWT, proprietario | Controlla che l'utente sia attivo (`requireActiveUser`, [api-gateway.md](api-gateway.md#authorizer-jwt)) e l'ownership, toglie la riga dal database e cancella l'oggetto su S3 |
 
 Il database viene aggiornato solo dagli upload riusciti, senza fidarsi di una conferma del client. Alternativa scartata:
 la SPA chiama una route di conferma a upload finito; meno affidabile, perché il client può mentire o non chiamare.

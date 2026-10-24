@@ -44,7 +44,7 @@ futuri. Ogni riga rimanda al file del servizio che la spiega per intero.
 | Token in memoria nella SPA, CSP da CloudFront, revoca al logout | Difese contro il furto del token; rischio residuo dichiarato: l'authorizer non vede le revoche, un token rubato vale fino a un'ora | [cognito.md](cognito.md#furto-del-token), [cloudfront.md](cloudfront.md#header-di-sicurezza-response-headers-policy) |
 | Autorizzazione su due livelli: ruolo (gruppi Cognito) e ownership (nella Lambda, con il DB) | L'authorizer sa chi sei; se la risorsa è tua lo sa solo il database | [api-gateway.md](api-gateway.md#autorizzazione-su-due-livelli) |
 | Gruppi `buyer`, `agent`, `admin` nel user pool; solo user pool, niente identity pool | I ruoli applicativi arrivano nel token; gli upload usano il presigned POST, non credenziali AWS nel browser | [cognito.md](cognito.md) |
-| **Account modificato e cancellato dal frontend direttamente con Cognito** | Le Lambda nella VPC non raggiungono Cognito. `PUT /users/me` dopo ogni login crea o aggiorna la riga con il solo `sub`; nuovo login di conferma, `DELETE /users/me`, poi `DeleteUser` (scope `aws.cognito.signin.user.admin` sull'app client), poi logout | [cognito.md](cognito.md#cancellazione-dellaccount), [lambda-users.md](lambda-users.md) |
+| **Account modificato e cancellato dal frontend direttamente con Cognito** | Le Lambda nella VPC non raggiungono Cognito. `PUT /users/me` dopo ogni login crea o aggiorna la riga con il solo `sub`; nuovo login di conferma, `DELETE /users/me`, poi `DeleteUser` (scope `aws.cognito.signin.user.admin` sull'app client), poi logout. Se `DeleteUser` fallisce, `PUT /users/me` risponde 410 e la SPA riprova `DeleteUser` | [cognito.md](cognito.md#cancellazione-dellaccount), [lambda-users.md](lambda-users.md) |
 | Route esplicite, lettura degli annunci pubblica | Il preflight `OPTIONS` lo gestisce il CORS senza authorizer; un visitatore vede gli annunci | [api-gateway.md](api-gateway.md#route) |
 | CORS sull'HTTP API e sul bucket dei file | Il sito chiama due origini diverse | [api-gateway.md](api-gateway.md#cors), [s3.md](s3.md#cors-del-bucket-dei-file) |
 | Throttling sullo stage | Difesa dagli abusi; WAF non si associa a un'HTTP API | [api-gateway.md](api-gateway.md#throttling) |
@@ -58,6 +58,10 @@ futuri. Ogni riga rimanda al file del servizio che la spiega per intero.
 | Presigned Lambda **nella** VPC | Prima di firmare controlla nel database che l'utente sia il proprietario | [lambda-presigned.md](lambda-presigned.md) |
 | Mailer Lambda **fuori** dalla VPC | Non usa il database: niente endpoint per SQS e SES, meno cold start e costi | [lambda-mailer.md](lambda-mailer.md) |
 | Aurora PostgreSQL, un cluster con writer e reader su due AZ | Dati relazionali; failover automatico e storage replicato | [aurora.md](aurora.md) |
+| **Alla cancellazione dell'account anonimizziamo**: immobili e offerte restano senza dati personali. Una transazione della Users Lambda: riga `users` con il solo `sub` e `deleted_at`, immobili a `withdrawn`, offerte `pending` (sue o ricevute) a `withdrawn`; accettate e rifiutate invariate | Le offerte riguardano anche l'altra parte, che va avvisata (`OFFER_WITHDRAWN`); le chiavi esterne restano valide; il `sub` dopo `DeleteUser` non porta a nessuno, perché l'email stava solo in Cognito; niente S3 nella transazione | [lambda-users.md](lambda-users.md#cancellazione-dellaccount-anonimizzazione) |
+| `users_user` con `UPDATE (status)` su `properties` e `offers`, nessun cambio IAM | Il ritiro tocca solo la colonna di stato; IAM decide chi entra nel proxy, i `GRANT` cosa si fa sulle tabelle | [aurora.md](aurora.md#utenti-postgresql) |
+| Scritture rifiutate (403) per un `sub` con `deleted_at`; `PUT /users/me` risponde 410 e non ricrea il profilo | Un token emesso prima di `DeleteUser` vale fino a 60 minuti: così può solo leggere. Costo: una query per ogni richiesta che scrive | [api-gateway.md](api-gateway.md#authorizer-jwt) |
+| File degli immobili ritirati lasciati su S3 | Sono le foto della casa, non dati personali; la Users Lambda non ha permessi su S3 | [lambda-property.md](lambda-property.md#immobili-ritirati) |
 | RDS Proxy | Pooling delle connessioni delle Lambda, autenticazione IAM, failover più rapido. Non strettamente necessario con il nostro traffico, adottato per sicurezza | [rds-proxy.md](rds-proxy.md) |
 | Lambda → proxy con IAM e TLS; proxy → Aurora con la password del secret | Nessuna password nelle Lambda; la password la vede solo il proxy | [rds-proxy.md](rds-proxy.md) |
 | Un utente PostgreSQL e un secret per ogni Lambda con DB | IAM decide chi entra e con quale utente, i `GRANT` cosa può fare | [aurora.md](aurora.md#utenti-postgresql) |
@@ -106,6 +110,9 @@ futuri. Ogni riga rimanda al file del servizio che la spiega per intero.
 | Identity pool | Non servono credenziali AWS nel browser | Accesso diretto dei client ai servizi AWS |
 | Trigger Cognito per creare la riga utente | `PUT /users/me` basta | — |
 | `AdminDeleteUser` dalla Users Lambda, interface endpoint `cognito-idp` o evento verso una Lambda fuori VPC | Dalla VPC non c'è strada; l'endpoint Cognito esiste ma con limiti | — |
+| **Cancellazione a cascata** di immobili, offerte e file alla cancellazione dell'account | L'altra parte di un'offerta ne perderebbe la storia; i file su S3 li può togliere solo la Property o la Files, non la Users Lambda, e una transazione non comprende S3 | — |
+| **Anonimizzare solo il profilo** lasciando pubblici gli immobili | Annunci senza un agente che risponda, che continuerebbero a ricevere offerte e upload | — |
+| Nessun evento per le offerte ritirate dalla cancellazione | L'altra parte vedrebbe sparire una trattativa in corso senza saperlo | — |
 | Lasciare su S3 i file di un immobile cancellato | Spazio pagato per niente e file ancora raggiungibili da chi ha il link | — |
 | Cancellare i file con un evento SNS → Files Lambda | La Files Lambda non è in ascolto su SNS: servirebbe un'altra coda o un endpoint Lambda. La Property ha già il gateway endpoint S3, gratuito | Se la pulizia diventasse lenta (molti file) e non dovesse pesare sulla richiesta |
 | Lifecycle rule di S3 sui file orfani | Le lifecycle rule lavorano per prefisso o tag ed età, non sanno se l'immobile esiste | Come rete di sicurezza, con un tag messo sui file da cancellare |
@@ -183,6 +190,8 @@ Non verificato puntualmente: che WAF non si associ alle HTTP API; il bisogno del
 - Ambienti separati (oggi c'è solo `prod`), Infrastructure as Code (CloudFormation, Terraform o CDK), stima dei costi con
   il Pricing Calculator, modello dati, backup e retention di Aurora, scansione antivirus dei file caricati, dominio
   personalizzato.
+- Pulizia dei file degli immobili ritirati, riusando la cancellazione di un immobile della Property Lambda (oggi restano
+  su S3).
 
 ## Costi complessivi
 

@@ -19,7 +19,9 @@ Dopo l'upload subentra la [Files Lambda](lambda-files.md) con la notifica S3. Re
 ## Cosa fa
 
 1. La SPA chiama `POST /properties/{id}/uploads` con tipo e dimensione del file (JWT obbligatorio).
-2. La Lambda controlla nel database che il `sub` del token sia il proprietario dell'immobile.
+2. La Lambda controlla nel database che l'utente sia attivo (`requireActiveUser`: niente `deleted_at` sulla sua riga,
+   altrimenti 403), che il `sub` del token sia il proprietario dell'immobile e che l'immobile non sia ritirato
+   (`status = 'active'`, altrimenti 409: [lambda-property.md](lambda-property.md#immobili-ritirati)).
 3. Firma un presigned POST:
    - la **chiave** la decide lei: `uploads/<propertyId>/<uuid>.<ext>`, non il client. Il prefisso è per immobile (e
      non per utente, come in una prima proposta) perché il controllo di ownership è sull'immobile; l'UUID evita

@@ -9,11 +9,12 @@ module.exports = ({ S }) => {
   tabella(
     ["Rischio", "Cosa significa", "Perché lo accettiamo"],
     [
-      ["**Revoca dei token**", "l'authorizer JWT controlla firma, issuer, audience e scadenza ma non le revoche: un access token rubato resta valido verso l'API fino alla scadenza, al massimo un'ora, anche dopo il logout", "difese a monte (token in memoria, CSP, HTTPS, durata breve, revoca del refresh token al logout); la soluzione completa, un BFF, è un componente sempre in mezzo a ogni chiamata"],
+      ["**Revoca dei token**", "l'authorizer JWT controlla firma, issuer, audience e scadenza ma non le revoche: un access token rubato resta valido verso l'API fino alla scadenza, al massimo un'ora, anche dopo il logout. Dopo la cancellazione dell'account vale solo per leggere: le scritture trovano `deleted_at` e ricevono 403", "difese a monte (token in memoria, CSP, HTTPS, durata breve, revoca del refresh token al logout); la soluzione completa, un BFF, è un componente sempre in mezzo a ogni chiamata"],
       ["**SES in sandbox**", "si può inviare solo a indirizzi verificati, al massimo 200 email ogni 24 ore e una al secondo; l'SMTP non è disponibile a Milano", "per la demo basta; la concorrenza massima della Mailer a 2 protegge già il limite"],
       ["**Una sola regione**", "tutto sta in `eu-south-1`: le due zone di disponibilità coprono la caduta di un data center, non quella dell'intera regione", "non è stata prevista una replica in un'altra regione; resta un limite dichiarato"],
       ["**Email doppie**", "la coda standard garantisce la consegna almeno una volta: raramente la stessa email può partire due volte; i batch parziali riducono il problema", "evitarlo richiederebbe un database nella Mailer"],
       ["**Dipendenza della Mailer da Cognito**", "se Cognito non risponde l'email non parte; il ruolo della Mailer può inoltre leggere gli utenti del pool", "i messaggi vengono ritentati e poi finiscono nella DLQ, dove non si perdono; il permesso è limitato al solo user pool"],
+      ["**Cosa resta di un account cancellato**", "la riga `users` con il solo `sub`, gli immobili ritirati con i loro file su S3 (raggiungibili da chi ha già il link), le offerte ritirate o chiuse; nei backup di Aurora il profilo resta fino alla fine della retention", "nessuno di questi dati porta a una persona dopo `DeleteUser`; le foto sono della casa, non dell'utente"],
       ["**File pubblici per chi ha il link**", "foto e video degli annunci sono leggibili da chiunque conosca l'indirizzo", "è una scelta di prodotto per le foto degli annunci; per documenti privati servirebbero URL firmati"],
       ["**Nessun antivirus sui file caricati**", "un file caricato non viene analizzato", "limite di tipo e di dimensione nel presigned POST; scansione tra gli sviluppi"],
       ["**Configurazione mai provata**", "la documentazione descrive la configurazione prevista, nessuna risorsa è stata creata", "le prove reali (connessione al proxy, failover, CSP) sono il primo passo dopo il provisioning"],
@@ -51,6 +52,7 @@ module.exports = ({ S }) => {
   punto("**Rotazione automatica dei secret** con una Lambda di rotazione."),
   punto("**Infrastructure as Code** (CloudFormation, Terraform o CDK): come un `docker-compose.yml`, ma per tutta l'infrastruttura AWS. Con essa, **ambienti separati** (oggi esiste solo `prod`)."),
   punto("**Scansione antivirus** dei file caricati, **modello dati** e politica di backup, **dominio personalizzato** con certificato ACM in `us-east-1`."),
+  punto("**Pulizia dei file degli immobili ritirati** con la stessa logica della cancellazione di un immobile della Property Lambda (4.4), per esempio lanciata dall'`admin`: oggi restano su S3 con l'immobile."),
   punto("**File privati** (contratti, documenti d'identità): si passerebbe a URL firmati di CloudFront o a presigned GET generati da una Lambda."),
   ];
 };

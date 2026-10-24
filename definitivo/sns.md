@@ -49,7 +49,8 @@ File: [`config/sns-subscription-attributes.json`](config/sns-subscription-attrib
 
 Il messaggio pubblicato contiene il **destinatario come `recipientSub`** (il `sub` di Cognito) e i dati che servono a
 comporre l'email, **non l'indirizzo email**. Tipi di evento: nuova offerta su un immobile, offerta accettata o
-rifiutata, benvenuto a un nuovo utente.
+rifiutata, offerta ritirata per la cancellazione di un account (`OFFER_WITHDRAWN`, pubblicato dalla Users Lambda:
+[lambda-users.md](lambda-users.md#cancellazione-dellaccount-anonimizzazione)), benvenuto a un nuovo utente.
 
 ```json
 {
@@ -67,7 +68,8 @@ rifiutata, benvenuto a un nuovo utente.
 ```
 
 - `recipientSub`: per una nuova offerta è il `owner_id` dell'immobile, per l'esito è il `sub` di chi ha fatto l'offerta,
-  per il benvenuto il `sub` del nuovo utente. Le Lambda lo prendono dal database o dai claim, mai dal body.
+  per l'offerta ritirata l'altra parte rispetto a chi ha cancellato l'account, per il benvenuto il `sub` del nuovo
+  utente. Le Lambda lo prendono dal database o dai claim, mai dal body.
 - `eventId`: identifica l'evento nei log della Mailer, insieme al `messageId` di SQS.
 - La Mailer non ha bisogno del database: l'indirizzo lo legge da Cognito con `AdminGetUser`
   ([lambda-mailer.md](lambda-mailer.md#da-dove-arriva-lemail)).

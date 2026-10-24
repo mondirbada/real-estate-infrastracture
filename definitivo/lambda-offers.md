@@ -18,10 +18,25 @@ Regole comuni: [lambda.md](lambda.md).
 
 | Route | Accesso | Controllo |
 | --- | --- | --- |
-| `POST /properties/{id}/offers` | JWT | gruppo `buyer` |
+| `POST /properties/{id}/offers` | JWT | utente attivo; gruppo `buyer`; immobile `active` (altrimenti 409) |
 | `GET /offers` | JWT | chi ha fatto l'offerta o il proprietario dell'immobile |
-| `PUT /offers/{id}` (accetta o rifiuta) | JWT | chi ha fatto l'offerta o il proprietario dell'immobile |
-| `DELETE /offers/{id}` | JWT | chi ha fatto l'offerta o il proprietario dell'immobile |
+| `PUT /offers/{id}` (accetta o rifiuta) | JWT | utente attivo; chi ha fatto l'offerta o il proprietario dell'immobile; offerta `pending` (altrimenti 409) |
+| `DELETE /offers/{id}` (ritiro) | JWT | utente attivo; chi ha fatto l'offerta o il proprietario dell'immobile; offerta `pending` (altrimenti 409) |
+
+"Utente attivo": la riga `users` del `sub` non ha `deleted_at`, altrimenti 403 (`requireActiveUser`,
+[api-gateway.md](api-gateway.md#authorizer-jwt)).
+
+### Stato di un'offerta
+
+`offers.status` vale `pending` (in sospeso), `accepted`, `rejected` o `withdrawn` (ritirata). Il ritiro con
+`DELETE /offers/{id}` non toglie la riga: la porta a `withdrawn`. Solo un'offerta `pending` cambia stato; le altre sono
+chiuse.
+
+Un'offerta in sospeso passa a `withdrawn` anche quando uno dei due utenti cancella l'account: lo fa la Users Lambda,
+nella transazione di `DELETE /users/me`, per le offerte fatte da lui e per quelle ricevute sui suoi immobili, e
+pubblica un evento `OFFER_WITHDRAWN` verso l'altra parte
+([lambda-users.md](lambda-users.md#cancellazione-dellaccount-anonimizzazione)). Le offerte già accettate o rifiutate
+restano come sono.
 
 Una nuova offerta pubblica un evento per il proprietario dell'immobile; l'accettazione o il rifiuto un evento per
 l'acquirente. L'evento porta il destinatario come `recipientSub` (il `owner_id` dell'immobile o il `sub` di chi ha fatto

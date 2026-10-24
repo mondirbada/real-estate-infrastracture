@@ -137,9 +137,14 @@ Tre idee tengono insieme il progetto:
 - Cambio password o email: la SPA chiama Cognito direttamente (`ChangePassword` o `UpdateUserAttributes`, con
   l'access token dell'utente) ([cognito.md](cognito.md)). Nel database non c'è nulla da riallineare: l'email sta solo in Cognito e la
   Mailer legge sempre quella attuale.
-- Cancellazione: la SPA chiama prima `DELETE /users/me` (la Users Lambda cancella o anonimizza i dati applicativi) e poi
-  `DeleteUser` di Cognito. Se il secondo passo fallisce l'account esiste ancora e l'utente può ripetere la cancellazione;
-  se intanto rientra, `PUT /users/me` gli ricrea un profilo vuoto.
+- Cancellazione: dopo un nuovo login di conferma (`prompt=login`) la SPA chiama `DELETE /users/me` e poi `DeleteUser`
+  di Cognito, poi fa il logout. La Users Lambda **anonimizza** in una sola transazione
+  ([lambda-users.md](lambda-users.md#cancellazione-dellaccount-anonimizzazione)): la riga `users` resta con il solo `sub`
+  e `deleted_at`, gli immobili dell'utente passano a ritirati, le offerte in sospeso sue o ricevute a ritirate (con un
+  evento `OFFER_WITHDRAWN` verso l'altra parte); i file restano su S3 con l'immobile ritirato.
+- Se `DeleteUser` fallisce l'account Cognito esiste ancora: al login successivo `PUT /users/me` risponde 410 (il
+  profilo non si ricrea) e la SPA riprova direttamente `DeleteUser`. Un token emesso prima della cancellazione non può
+  più scrivere: le Lambda rifiutano con 403 le scritture di un `sub` con `deleted_at`.
 
 ### 10. Log e monitoraggio
 

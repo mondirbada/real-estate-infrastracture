@@ -62,6 +62,25 @@ le letture servirebbe un endpoint di sola lettura del proxy (punto aperto).
 - I permessi su database, schemi, tabelle e sequenze si definiscono con SQL (`GRANT`), compresi quelli sugli oggetti
   futuri quando servono. **IAM non sostituisce i `GRANT`**: IAM decide chi entra nel proxy e con quale utente, i `GRANT`
   cosa quell'utente può fare sulle tabelle.
+- I `GRANT` toccati dalla cancellazione dell'account
+  ([lambda-users.md](lambda-users.md#cancellazione-dellaccount-anonimizzazione)), come esempio del principio:
+
+  ```sql
+  -- La Users Lambda: il proprio profilo, più lo stato di immobili e offerte per ritirarli.
+  GRANT SELECT, INSERT, UPDATE ON users TO users_user;
+  GRANT SELECT (id, owner_id, status, title) ON properties TO users_user;
+  GRANT UPDATE (status) ON properties TO users_user;
+  GRANT SELECT (id, property_id, buyer_id, status, amount) ON offers TO users_user;
+  GRANT UPDATE (status) ON offers TO users_user;
+
+  -- Le altre Lambda: solo leggere se l'utente della richiesta è ancora attivo.
+  GRANT SELECT (sub, deleted_at) ON users TO property_user, offers_user, presigned_user, files_user;
+  ```
+
+  `users_user` può cambiare **solo la colonna `status`** di immobili e offerte, non titolo, prezzo o importo, e non ha
+  `DELETE` su nessuna tabella. Le colonne in `SELECT` servono perché in PostgreSQL un `UPDATE` deve poter leggere le
+  colonne che usa nel `WHERE` e nel `RETURNING`. Per IAM non cambia nulla: il ruolo della Users Lambda entra sempre nel
+  proxy come `users_user`, e sono i `GRANT` a dire che cosa può fare lì dentro.
 - L'**utente master** è riservato all'amministrazione: non si usa nelle connessioni applicative e il suo secret non è
   associato al proxy.
 - In questa configurazione il proxy usa la **password** dell'utente contenuta nel secret: non serve `rds-db:connect` al
@@ -77,6 +96,11 @@ all'utente sempre con il `sub` (`owner_id` degli immobili, autore delle offerte)
 | --- | --- | --- |
 | `sub` (chiave primaria) | claim `sub` dell'access token, in `PUT /users/me` | identificativo opaco e stabile di Cognito: non cambia nemmeno se l'utente cambia email |
 | dati di profilo applicativi | body di `PUT /users/me` | solo ciò che serve all'applicazione (per esempio il profilo pubblico dell'agente) |
+| `deleted_at` | `DELETE /users/me` | `NULL` finché l'account è attivo; con la cancellazione i dati di profilo diventano `NULL` e resta il solo `sub` |
+
+Immobili e offerte hanno una colonna `status`: `properties.status` vale `active` o `withdrawn`, `offers.status` vale
+`pending`, `accepted`, `rejected` o `withdrawn`. Il ritiro serve anche alla cancellazione dell'account, che anonimizza
+invece di cancellare ([lambda-users.md](lambda-users.md#cancellazione-dellaccount-anonimizzazione)).
 
 Perché:
 
@@ -85,6 +109,8 @@ Perché:
 - **Nessuna copia da riallineare**: se l'utente cambia email su Cognito, la Mailer usa subito quella nuova.
 - Quando serve un'email la Mailer la chiede a Cognito con `AdminGetUser`, partendo dal `recipientSub` dell'evento
   ([lambda-mailer.md](lambda-mailer.md#da-dove-arriva-lemail)).
+- **Anonimizzare costa poco**: alla cancellazione dell'account basta svuotare le colonne di profilo. Il `sub` che resta,
+  dopo `DeleteUser` su Cognito, è uno pseudonimo che non porta più a nessuna persona.
 
 ## IAM
 
@@ -144,6 +170,10 @@ cancellano cluster e proxy, che costano anche a vuoto.
 > **Che dati personali tenete nel database?**
 > Il `sub` di Cognito come chiave e i dati di profilo applicativi; niente email. L'email sta solo in Cognito e la legge
 > la Mailer quando deve inviare. È come tenere nel database di un'app Spring solo l'ID dell'utente di Keycloak.
+>
+> **Cosa può fare la Users Lambda su immobili e offerte?**
+> Solo cambiare la colonna `status`, per ritirarli quando un utente cancella l'account: `GRANT UPDATE (status)`, non
+> `UPDATE` su tutta la tabella e nessun `DELETE`. IAM non è cambiato: dice solo che entra come `users_user`.
 >
 > **Perché non RDS PostgreSQL o Serverless v2?**
 > Si potrebbe: Aurora dà failover più rapido e storage multi-AZ; Serverless v2 costerebbe meno con poco traffico.

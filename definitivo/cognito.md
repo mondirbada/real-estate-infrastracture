@@ -215,7 +215,8 @@ Registrazione, login, cambio di password o email e **cancellazione dell'account*
 Cognito**, con le API pubbliche autorizzate dall'access token dell'utente (`SignUp`, `UpdateUserAttributes`,
 `DeleteUser`). Così le Lambda, che stanno in una VPC senza accesso a Internet, non devono mai chiamare Cognito.
 
-- Dopo ogni login la SPA chiama `PUT /users/me`: la Users Lambda crea o aggiorna la riga con il solo `sub` del token.
+- Dopo ogni login la SPA chiama `PUT /users/me`: la Users Lambda crea o aggiorna la riga con il solo `sub` del token
+  (o risponde 410 se l'utente aveva già cancellato i suoi dati: vedi sotto).
 - Cambio email: lo fa la SPA con `UpdateUserAttributes`; Cognito la applica dopo la verifica del nuovo indirizzo. Nel
   database non c'è niente da riallineare.
 - Per cancellare l'account: vedi [Cancellazione dell'account](#cancellazione-dellaccount).
@@ -233,12 +234,16 @@ Sequenza nella SPA:
    cancellare l'account. Prima di un'operazione irreversibile la SPA fa rifare il login, così il token è appena emesso.
    Con il login gestito il cookie di sessione vale un'ora e salterebbe la password: la SPA apre il login con
    `prompt=login`, che forza una nuova autenticazione (da verificare sulla configurazione del login gestito).
-2. **`DELETE /users/me`**: la Users Lambda cancella o anonimizza i dati applicativi.
+2. **`DELETE /users/me`**: la Users Lambda anonimizza i dati applicativi in una transazione: il profilo resta con il
+   solo `sub` e `deleted_at`, immobili e offerte in sospeso passano a ritirati
+   ([lambda-users.md](lambda-users.md#cancellazione-dellaccount-anonimizzazione)).
 3. **`DeleteUser`** su Cognito con l'access token.
 4. **Logout**: la SPA toglie dalla memoria tutti i token.
 
-Perché prima il database e poi Cognito: se fallisce `DeleteUser` l'account esiste ancora, l'utente rientra e riprova
-(se intanto chiama `PUT /users/me` gli si ricrea un profilo vuoto, che la nuova cancellazione toglie). Con l'ordine
+Perché prima il database e poi Cognito: se fallisce `DeleteUser` l'account esiste ancora, l'utente rientra e riprova.
+Il profilo però è già anonimizzato e **non si ricrea**: al login la SPA chiama `PUT /users/me`, riceve 410 e capisce
+che la cancellazione era già confermata; chiama allora direttamente `DeleteUser` con il token appena ottenuto e fa il
+logout, senza ripassare dal passo 2. Con l'ordine
 inverso, se fallisse `DELETE /users/me` l'utente non potrebbe più fare login per riprovare e i suoi dati resterebbero nel
 database senza nessuno che li possa cancellare.
 
@@ -249,7 +254,9 @@ su Cognito toglie davvero l'ultimo recapito dell'utente.
 
 Limite: `DeleteUser` invalida il refresh token, ma ID e access token già emessi restano validi fino alla scadenza.
 L'authorizer di API Gateway controlla solo firma e scadenza, non se l'utente esiste ancora. Per questo la SPA butta i
-token al passo 4 e la loro durata è di 60 minuti.
+token al passo 4 e la loro durata è di 60 minuti. Il rischio si ferma alle letture: sulle route che scrivono le Lambda
+controllano che la riga `users` del `sub` non abbia `deleted_at` (altrimenti 403), e `PUT /users/me` risponde 410
+invece di ricreare il profilo ([api-gateway.md](api-gateway.md#authorizer-jwt)).
 
 Alternative scartate: chiamare `AdminDeleteUser` dalla Users Lambda (dalla VPC non c'è strada: servirebbe un interface
 endpoint `cognito-idp`, che esiste ma ha limiti, oppure un evento gestito da una Lambda fuori dalla VPC).
@@ -364,5 +371,6 @@ risponde `TooManyRequestsException`, che la Mailer tratta come errore temporaneo
 >
 > **Dopo `DeleteUser` il token funziona ancora con la nostra API?**
 > Sì, fino alla scadenza: l'authorizer verifica firma e scadenza senza chiedere a Cognito. Per questo la SPA cancella i
-> token subito e la durata è di 60 minuti. Le notifiche ancora in coda per lui finiscono con `UserNotFoundException` e
+> token subito e la durata è di 60 minuti. Però può solo leggere: le scritture trovano `deleted_at` sulla riga
+> dell'utente e ricevono 403, e `PUT /users/me` risponde 410. Le notifiche ancora in coda per lui finiscono con `UserNotFoundException` e
 > vengono scartate.

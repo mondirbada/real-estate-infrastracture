@@ -75,6 +75,30 @@ export function currentUser(event) {
 }
 ```
 
+Sulle route autenticate che **scrivono** (tutte tranne `GET` e le route di `/users/me`, che la Users Lambda gestisce da
+sé) le Lambda affiancano un secondo controllo, che guarda nel database se l'utente ha cancellato l'account:
+
+```javascript
+// Rifiuta le scritture di chi ha già cancellato l'account (token emesso prima, ancora valido fino a 60 minuti).
+export async function requireActiveUser(db, user) {
+  const { rows } = await db.query("SELECT deleted_at FROM users WHERE sub = $1", [user.sub]);
+  if (rows.length > 0 && rows[0].deleted_at !== null) {
+    throw new ForbiddenError("account cancellato"); // 403
+  }
+  return user;
+}
+```
+
+- **Perché.** L'authorizer non sa che l'utente ha cancellato l'account: un access token emesso prima di `DeleteUser`
+  vale fino alla scadenza. Con questo controllo quel token non può più creare immobili, offerte o upload
+  ([lambda-users.md](lambda-users.md#cancellazione-dellaccount-anonimizzazione)). Il rischio residuo resta sulle
+  letture, che sono pubbliche o dell'utente stesso.
+- **Il costo.** Una query in più per ogni richiesta che scrive, sulla chiave primaria di `users`. Le letture non la
+  pagano. Ogni utente PostgreSQL ha per questo `SELECT (sub, deleted_at)` su `users`
+  ([aurora.md](aurora.md#utenti-postgresql)).
+- **Una riga mancante non è un account cancellato**: con l'anonimizzazione le righe non si tolgono mai, quindi manca
+  solo per chi non ha ancora fatto `PUT /users/me`.
+
 - Il `sub` si prende **sempre dai claim**, mai dal body o dai parametri della richiesta, che il client può scrivere come
   vuole.
 - **Perché il controllo su `token_use`.** AWS avverte che non c'è un modo standard per distinguere un access token da un
