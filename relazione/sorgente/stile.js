@@ -106,8 +106,10 @@ const dopoTabella = () => new Paragraph({ children: [], spacing: { after: 120 } 
 
 // Figura a tutta larghezza con didascalia. pxW/pxH: dimensioni del PNG.
 function figura(file, pxW, pxH, didascalia) {
+  // Larghezza piena, ma mai più alta di ~55% della pagina utile: le figure alte si stringono.
+  const ALTEZZA_MAX_PX = 520;
   const largPt = LARGHEZZA / 20; // punti
-  const largPx = Math.round(largPt * 96 / 72);
+  const largPx = Math.min(Math.round(largPt * 96 / 72), Math.round(ALTEZZA_MAX_PX * pxW / pxH));
   return [
     new Paragraph({
       children: [new ImageRun({ type: "png", data: fs.readFileSync(file), transformation: { width: largPx, height: Math.round(largPx * pxH / pxW) } })],
@@ -134,7 +136,7 @@ const stili = {
   paragraphStyles: [
     { id: "Heading1", name: "Heading 1", basedOn: "Normal", next: "Normal", quickFormat: true,
       run: { size: 32, bold: true, color: BLU, font: "Calibri" },
-      paragraph: { spacing: { before: 360, after: 160 }, outlineLevel: 0, keepNext: true,
+      paragraph: { spacing: { before: 0, after: 160 }, outlineLevel: 0, keepNext: true, pageBreakBefore: true,
         border: { bottom: { style: BorderStyle.SINGLE, size: 8, color: ACCENTO, space: 4 } } } },
     { id: "Heading2", name: "Heading 2", basedOn: "Normal", next: "Normal", quickFormat: true,
       run: { size: 26, bold: true, color: BLU, font: "Calibri" },

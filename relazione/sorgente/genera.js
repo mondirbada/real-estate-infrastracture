@@ -63,8 +63,7 @@ const copertina = [
 ];
 const indice = [
   new Paragraph({ children: [new TextRun({ text: "Indice", size: 32, bold: true, color: S.BLU })], spacing: { after: 200 } }),
-  new TableOfContents("Indice", { hyperlink: true, headingStyleRange: "1-3" }),
-  new Paragraph({ children: [new PageBreak()] }),
+  new TableOfContents("Indice", { hyperlink: true, headingStyleRange: "1-2" }),
 ];
 
 // ---------- Documento ----------
