@@ -24,7 +24,7 @@ module.exports = ({ S, leggiJson, DIAGRAMMI }) => {
       ["Lambda → CloudWatch Logs", "lo invia il servizio Lambda, non la rete della funzione", "policy gestita `AWSLambdaBasicExecutionRole`"],
       ["HTTP API → CloudWatch Logs", "access log dello stage", "nessun ruolo: basta indicare il log group"],
       ["Allarme → topic ops", "azione dell'allarme", "nessuna topic policy: stesso account, nessuna chiave KMS del cliente"],
-      ["Operatore → log della Mailer", "`logs:FilterLogEvents`", "policy `ops-dlq-redrive`, sul solo log group della Mailer"],
+      ["Operatore → log della Mailer", "`logs:FilterLogEvents`", "policy `ops-dlq-redrive` (3.5), sul solo log group della Mailer"],
     ],
     [2800, 3200, 3600],
   ),
@@ -32,8 +32,7 @@ module.exports = ({ S, leggiJson, DIAGRAMMI }) => {
 
   h3("Le autorizzazioni chiave"),
   p("Le Lambda nella VPC non hanno Internet, eppure scrivono i log senza un endpoint: li raccoglie il servizio Lambda. Il permesso di scrittura sta in una delle due policy gestite che usiamo; per i log la sua `Resource: \"*\"` è accettabile, mentre per gli altri servizi ogni ruolo ha una policy nostra sull'ARN preciso (4.1). L'allarme non ha un ruolo: con un topic nello stesso account e non cifrato con una nostra chiave KMS, la procedura standard funziona senza topic policy."),
-  p("Un errore **permanente** della Mailer non viene ritentato e non arriva mai nella dead-letter queue: senza un controllo, l'email andrebbe persa in silenzio. La Mailer scrive log in JSON, senza indirizzi email, e un metric filter conta le righe di errore permanente:"),
-  ...codice(leggiJson("config/cloudwatch-metric-filter-mailer-permanent-failures.json"), "config/cloudwatch-metric-filter-mailer-permanent-failures.json"),
+  p("Un errore **permanente** della Mailer non viene ritentato e non arriva mai nella dead-letter queue: senza un controllo, l'email andrebbe persa in silenzio. La Mailer scrive log in JSON, senza indirizzi email, e un metric filter sul suo log group conta le righe con `level` uguale a `ERROR` e `code` uguale a `MAIL_PERMANENT_FAILURE` nella metrica `MailerPermanentFailures`, su cui c'è un allarme (configurazione completa nel repository)."),
 
   h3("Gli allarmi"),
   tabella(

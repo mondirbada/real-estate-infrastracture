@@ -30,7 +30,9 @@ function runs(testo, base = {}) {
 }
 function omit(o, chiavi) { const c = { ...o }; chiavi.forEach(k => delete c[k]); return c; }
 
-const p = (testo, opz = {}) => new Paragraph({ children: runs(testo), spacing: { after: 120, line: 276 }, alignment: AlignmentType.JUSTIFIED, ...opz });
+// Una frase che finisce con ":" introduce ciò che segue (una policy, un elenco): resta sulla stessa pagina.
+const p = (testo, opz = {}) => new Paragraph({ children: runs(testo), spacing: { after: 120, line: 276 },
+  alignment: AlignmentType.JUSTIFIED, keepNext: /:\s*$/.test(testo), ...opz });
 const h1 = (t, opz = {}) => new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun(t)], ...opz });
 const h2 = t => new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun(t)] });
 const h3 = t => new Paragraph({ heading: HeadingLevel.HEADING_3, children: [new TextRun(t)] });
@@ -58,11 +60,11 @@ function codice(testo, titolo) {
     spacing: { before: 120, after: 0 }, keepNext: true, indent: { left: 120 },
   }));
   righe.forEach((r, i) => out.push(new Paragraph({
-    children: [new TextRun({ text: r === "" ? " " : r, font: "Consolas", size: 17 })],
+    children: [new TextRun({ text: r === "" ? " " : r, font: "Consolas", size: 16 })],
     shading: { type: ShadingType.CLEAR, fill: CODICE_SFONDO, color: "auto" },
     border: bordo, indent: { left: 120, right: 120 },
     spacing: { before: i === 0 && !titolo ? 120 : 0, after: i === righe.length - 1 ? 160 : 0, line: 240 },
-    keepNext: righe.length <= 25 && i < righe.length - 1, keepLines: true,
+    keepNext: righe.length <= 45 && i < righe.length - 1, keepLines: true,
   })));
   return out;
 }

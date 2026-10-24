@@ -1,9 +1,13 @@
 // 1. Il problema
-module.exports = ({ S }) => {
-  const { p, h1, h2, h3, punto, tabella, dopoTabella } = S;
+module.exports = ({ S, REPO }) => {
+  const { p, h1, h2, h3, punto, tabella, dopoTabella, riquadro } = S;
   return [
   h1("1. Il problema"),
   p("Real Estate Platform è il progetto di gruppo per l'esame di Servizi Cloud dell'ITS: una piattaforma immobiliare su AWS. Prima dei servizi, diciamo che cosa deve fare, per chi e con quali vincoli; il capitolo 2 riprende i requisiti uno per uno."),
+  ...riquadro("Il materiale nel repository", [
+    `Le configurazioni (CORS, coda e DLQ, allarmi, Cognito, condizioni del presigned POST…), la documentazione di ogni servizio e i sorgenti dei diagrammi sono nel repository del progetto: ${REPO}.`,
+    "Nel testo compaiono per intero solo le policy IAM, ognuna nel paragrafo in cui viene usata.",
+  ]),
 
   h2("1.1 Che cosa deve fare la piattaforma"),
   p("Gli agenti immobiliari pubblicano immobili in vendita. Ogni annuncio ha una descrizione, un prezzo e soprattutto **foto e video**. Chiunque deve poter sfogliare gli annunci senza registrarsi."),

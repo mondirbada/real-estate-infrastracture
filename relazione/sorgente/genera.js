@@ -6,7 +6,7 @@ const fs = require("fs");
 const path = require("path");
 const {
   Document, Packer, Paragraph, TextRun, AlignmentType, Header, Footer, PageNumber,
-  TableOfContents, PageBreak, BorderStyle,
+  TableOfContents, PageBreak, BorderStyle, ExternalHyperlink,
 } = require("docx");
 const S = require("./stile");
 
@@ -14,7 +14,8 @@ const RADICE = path.resolve(__dirname, "../..");
 const DEF = path.join(RADICE, "definitivo");
 const DIAGRAMMI = path.resolve(__dirname, "../diagrammi");
 const leggiJson = f => fs.readFileSync(path.join(DEF, f), "utf8").replace(/\n$/, "");
-const ctx = { S, leggiJson, DEF, DIAGRAMMI, RADICE };
+const REPO = "https://github.com/mondirbada/real-estate-infrastracture/tree/main/definitivo";
+const ctx = { S, leggiJson, DEF, DIAGRAMMI, RADICE, REPO };
 
 // Ordine dei capitoli: ogni voce è un file capitoli/<nome>.js che esporta (ctx) => [elementi].
 // Se il file non c'è ancora, al suo posto va il segnaposto.
@@ -31,8 +32,6 @@ const CAPITOLI = [
   ["03-7-osservabilita", "3.7 Log, metriche e allarmi", ""],
   ["04-sicurezza", "4. Sicurezza e IAM", ""],
   ["05-decisioni-limiti", "5. Decisioni, alternative e limiti", ""],
-  ["A-ruoli-policy", "Appendice A — Ruoli e policy", ""],
-  ["B-configurazioni", "Appendice B — Configurazioni", ""],
 ];
 
 const arg = (nome) => { const i = process.argv.indexOf(nome); return i > 0 ? process.argv[i + 1] : null; };
@@ -58,7 +57,9 @@ const copertina = [
   new Paragraph({ children: [new TextRun({ text: "Gruppo", bold: true, size: 22 })] }),
   new Paragraph({ children: [new TextRun({ text: "Charrier, Fatticcioni, Badaoui, Pappalardo, Xu, Jimenez", size: 22 })], spacing: { after: 240 } }),
   new Paragraph({ children: [new TextRun({ text: "Regione AWS: eu-south-1 (Milano)", size: 20, color: S.GRIGIO })] }),
-  new Paragraph({ children: [new TextRun({ text: "Ottobre 2026", size: 20, color: S.GRIGIO })] }),
+  new Paragraph({ children: [new TextRun({ text: "Ottobre 2026", size: 20, color: S.GRIGIO })], spacing: { after: 240 } }),
+  new Paragraph({ children: [new TextRun({ text: "Documentazione completa, configurazioni e diagrammi:", size: 20, color: S.GRIGIO })] }),
+  new Paragraph({ children: [new ExternalHyperlink({ link: REPO, children: [new TextRun({ text: REPO, size: 20, style: "Hyperlink" })] })] }),
   new Paragraph({ children: [new PageBreak()] }),
 ];
 const indice = [

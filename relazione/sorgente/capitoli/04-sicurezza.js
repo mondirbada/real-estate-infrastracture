@@ -14,7 +14,7 @@ module.exports = ({ S, leggiJson, DIAGRAMMI }) => {
   h2("4.1 Le tre facce di IAM"),
   p("IAM risponde a una domanda: **chi** può fare **quale azione** su **quale risorsa**, a **quali condizioni**. Di default la risposta è no. Nessun componente ha credenziali proprie: le Lambda e l'RDS Proxy usano **ruoli**, identità senza password che il servizio assume ricevendo da STS credenziali temporanee. Nel codice e nel repository non c'è nessuna chiave."),
   p("Ogni permesso del progetto sta in uno di tre documenti, con la stessa grammatica (`Effect`, `Action`, `Resource`, `Condition`) ma attaccati a cose diverse:"),
-  punto("**Identity policy**, su un ruolo: *cosa può fare* chi lo indossa. Esempio: `lambda-offers.json` concede `rds-db:connect` come `offers_user` e `sns:Publish` sul topic."),
+  punto("**Identity policy**, su un ruolo: *cosa può fare* chi lo indossa. Esempio: `lambda-offers.json` concede `rds-db:connect` come `offers_user` e `sns:Publish` sul topic (3.5)."),
   punto("**Resource policy**, su una risorsa (funzione, bucket, coda, endpoint): *chi può usarla*. Esempio: la queue policy ammette `sns.amazonaws.com` dal nostro topic."),
   punto("**Trust relationship**, su un ruolo: *chi può assumerlo*. È la resource policy del ruolo."),
   p("L'**execution role** di una Lambda le mette insieme. La trust, uguale per i sei ruoli delle Lambda, permette al servizio Lambda di assumerlo; le identity policy dicono cosa fa il codice; chi può invocare la funzione sta invece nella resource policy della funzione. Il ruolo del proxy ha la stessa struttura con `rds.amazonaws.com` (3.3)."),
@@ -23,7 +23,7 @@ module.exports = ({ S, leggiJson, DIAGRAMMI }) => {
   h3("Come si valuta una richiesta"),
   p("AWS raccoglie tutte le policy che riguardano la richiesta e decide così: un `Deny` esplicito vince su tutto; altrimenti serve almeno un `Allow`; altrimenti è no. **Nello stesso account** basta che l'`Allow` stia nella identity policy **oppure** nella resource policy. Fanno eccezione le trust e le key policy di KMS, che devono ammettere il principal comunque. Il `Deny` esplicito del progetto è nelle due bucket policy, che rifiutano ogni richiesta senza TLS, anche dai nostri ruoli."),
   p("Per questo molte frecce hanno solo la identity policy: la Files Lambda cancella oggetti, la Mailer legge la coda, il proxy legge i secret, e nessuna di queste risorse nomina il ruolo. Quando invece chi chiama è **un servizio AWS** (API Gateway, S3, CloudFront, SNS), il suo principal non ha identity policy nel nostro account: l'unico posto per il suo `Allow` è la resource policy della risorsa che chiama. È il caso delle cinque Lambda di business, della Files Lambda, dei due bucket e della coda."),
-  p("Per la stessa eccezione la coda è cifrata con SSE-SQS e non con `aws/sqs`: la key policy di quella chiave non ammette `sns.amazonaws.com` e non si può modificare (Appendice B). L'**endpoint policy** infine non concede nulla: filtra. Una richiesta che passa dall'endpoint SNS deve essere permessa dall'endpoint **e** dal ruolo."),
+  p("Per la stessa eccezione la coda è cifrata con SSE-SQS e non con `aws/sqs`: la key policy di quella chiave non ammette `sns.amazonaws.com` e non si può modificare. L'**endpoint policy** infine non concede nulla: filtra. Una richiesta che passa dall'endpoint SNS deve essere permessa dall'endpoint **e** dal ruolo (testo in 3.5)."),
 
   h3("Confused deputy"),
   p("Ammettere `sns.amazonaws.com` vuol dire ammettere il servizio intero, cioè i topic di tutti i clienti AWS: un altro account potrebbe usare SNS come intermediario per scrivere nella nostra coda. È il **confused deputy**. Ogni nostra resource policy verso un servizio ha quindi `aws:SourceArn`, che il servizio valorizza con la risorsa per cui agisce: la nostra API, il nostro bucket, la nostra distribuzione, il nostro topic. Solo verso S3 aggiungiamo `aws:SourceAccount`, perché gli ARN di S3 non contengono l'account e un bucket cancellato potrebbe essere ricreato da altri con lo stesso nome (la policy della Files Lambda è in 3.4)."),
@@ -34,7 +34,9 @@ module.exports = ({ S, leggiJson, DIAGRAMMI }) => {
   punto("**Policy gestite da AWS solo per log e interfacce di rete**; tutto il resto in policy nostre, su ARN precisi."),
   punto("**Condizioni che stringono**: `ses:FromAddress` per il mittente, `s3:prefix` per l'elenco della Property, `kms:ViaService` per un'eventuale chiave del cliente."),
   p("Nessun ruolo ha `s3:GetObject` (i file li legge solo CloudFront) e nessuna Lambda ha `secretsmanager:GetSecretValue` (la password la vede solo il proxy)."),
-  p("Chi decide quale ruolo indossa una funzione è chi la crea, e per farlo serve `iam:PassRole` su quel ruolo. Senza questo controllo un'identità con pochi permessi potrebbe creare una Lambda, consegnarle un ruolo potente e ottenerne i permessi tramite il codice. La nostra identità di deploy può consegnare solo i ruoli `real-estate-prod-*` e solo a Lambda e RDS (`deploy-pass-role.json`); i ruoli applicativi non hanno permessi di provisioning. Ruoli e policy completi sono nell'Appendice A."),
+  p("Chi decide quale ruolo indossa una funzione è chi la crea, e per farlo serve `iam:PassRole` su quel ruolo. Senza questo controllo un'identità con pochi permessi potrebbe creare una Lambda, consegnarle un ruolo potente e ottenerne i permessi tramite il codice. I permessi di provisioning stanno solo nell'identità di deploy del team, non nei ruoli applicativi, e il `PassRole` è limitato così:"),
+  ...codice(leggiJson("iam/policies/deploy-pass-role.json"), "iam/policies/deploy-pass-role.json"),
+  p("La risorsa ammette solo i ruoli `real-estate-prod-*`, e la condizione `iam:PassedToService` solo Lambda e RDS: un ruolo del progetto non può finire su un'istanza EC2 o su un altro servizio, e nessun ruolo di altri può essere consegnato."),
 
   // ───────────────────────────── 4.2 ─────────────────────────────
   h2("4.2 La rete come secondo livello"),
@@ -56,11 +58,11 @@ module.exports = ({ S, leggiJson, DIAGRAMMI }) => {
   ),
   dopoTabella(),
   p("Le Lambda non raggiungono Aurora direttamente, nessuno entra nelle Lambda, e ogni endpoint accetta solo chi lo usa."),
-  p("Senza Internet i servizi AWS si raggiungono dagli **endpoint VPC**, di due tipi. Il **gateway** di S3 è una rotta verso la prefix list, gratuita e senza security group. Gli **interface** di SNS e Secrets Manager sono interfacce di rete con IP privato in ogni subnet, a pagamento, con Private DNS: l'SDK usa il nome di sempre. L'endpoint SNS ha un'**endpoint policy** che lascia passare solo `sns:Publish` sul nostro topic da identità del nostro account; gli altri usano quella di default. Tutto il resto, Mailer compresa, sta fuori dalla VPC e si protegge solo con IAM."),
+  p("Senza Internet i servizi AWS si raggiungono dagli **endpoint VPC**, di due tipi. Il **gateway** di S3 è una rotta verso la prefix list, gratuita e senza security group. Gli **interface** di SNS e Secrets Manager sono interfacce di rete con IP privato in ogni subnet, a pagamento, con Private DNS: l'SDK usa il nome di sempre. L'endpoint SNS ha un'**endpoint policy** che lascia passare solo `sns:Publish` sul nostro topic da identità del nostro account (3.5); gli altri usano quella di default. Tutto il resto, Mailer compresa, sta fuori dalla VPC e si protegge solo con IAM."),
 
   // ───────────────────────────── 4.3 ─────────────────────────────
   h2("4.3 La mappa delle autorizzazioni"),
-  p("Tutti i passaggi del sistema, per flusso: su quale rete viaggiano e che cosa li autorizza. Il dettaglio è nel capitolo 3, il testo delle policy nell'Appendice A."),
+  p("Tutti i passaggi del sistema, per flusso: su quale rete viaggiano e che cosa li autorizza. Le policy di ogni gruppo sono nel paragrafo che lo intitola; la trust delle Lambda e `iam:PassRole` sono in 4.1."),
   tabella(
     ["Da → A", "Rete", "Autorizzato da"],
     [
@@ -71,7 +73,7 @@ module.exports = ({ S, leggiJson, DIAGRAMMI }) => {
       ["Browser → Cognito", "Internet, HTTPS", "credenziali dell'utente, code con PKCE"],
       ["Browser → HTTP API", "Internet, HTTPS", "CORS; authorizer JWT"],
       ["HTTP API → 5 Lambda", "AWS", "resource policy della funzione con `aws:SourceArn`"],
-      ["Servizio Lambda → execution role", "STS", "trust relationship"],
+      ["Servizio Lambda → execution role", "STS", "trust relationship (4.1)"],
       gruppo("3.3 Dalla Lambda al database"),
       ["5 Lambda → RDS Proxy", "VPC, 5432 TLS", "`rds-db:connect` nel ruolo"],
       ["Servizio RDS → ruolo del proxy", "STS", "trust relationship"],

@@ -48,12 +48,11 @@ module.exports = ({ S, leggiJson, DIAGRAMMI }) => {
     [1800, 3800, 4000],
   ),
   dopoTabella(),
-  p("Sull'app client si configurano flusso, scope, durata di 60 minuti e revoca. Lo scope `aws.cognito.signin.user.admin` serve perché l'access token possa agire sull'utente stesso (3.6). I ruoli applicativi non sono scope ma tre **gruppi** del pool, `buyer`, `agent` e `admin`."),
-  ...codice(leggiJson("config/cognito-app-client.json"), "config/cognito-app-client.json"),
+  p("L'app client `real-estate-prod-spa` ammette solo il flusso `code`, gli scope `openid`, `email` e `aws.cognito.signin.user.admin`, i soli URL di callback e logout del sito, token di 60 minuti e la revoca (configurazione completa nel repository). Lo scope `aws.cognito.signin.user.admin` serve perché l'access token possa agire sull'utente stesso (3.6). I ruoli applicativi non sono scope ma tre **gruppi** del pool, `buyer`, `agent` e `admin`."),
 
   h3("L'authorizer JWT"),
   p("L'authorizer è configurato con l'**issuer**, il nostro user pool, e l'**audience**, l'ID dell'app client. A ogni richiesta controlla la **firma** con le chiavi pubbliche del pool, tenute in cache; l'**issuer**; l'audience, che per l'access token cade su `client_id`, perché il token di Cognito non ha `aud`; e la **scadenza**. Un token falso riceve 401 e non costa un'esecuzione. Le route di sola lettura degli annunci sono pubbliche e non hanno authorizer; tutte le altre sì."),
-  p("Il CORS non protegge l'API: un client che non è un browser lo ignora. Impedisce solo che un sito di terzi, aperto nel browser dell'utente, la chiami leggendone le risposte; ammette l'origine del sito e i soli metodi e header usati (Appendice B)."),
+  p("Il CORS non protegge l'API: un client che non è un browser lo ignora. Impedisce solo che un sito di terzi, aperto nel browser dell'utente, la chiami leggendone le risposte; ammette l'origine del sito e i soli metodi e header usati (configurazione nel repository)."),
 
   h3("Chi può invocare la Lambda"),
   p("API Gateway non assume un nostro ruolo: è la **funzione** che lo ammette, con una resource policy applicata a tutte e cinque le Lambda di business (`<FUNCTION_NAME>` = `real-estate-prod-property`, `-users`, `-offers`, `-presigned`, `-files`)."),
