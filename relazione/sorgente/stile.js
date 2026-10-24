@@ -6,10 +6,11 @@ const {
 } = require("docx");
 
 const LARGHEZZA = 9638; // A4 con margini di 2 cm, in DXA
-const BLU = "1F3864";
-const ACCENTO = "2E75B6";
-const GRIGIO = "6B7280";
-const CODICE_SFONDO = "F3F4F6";
+const BLU = "3B2A1E";      // titoli: marrone scuro
+const ACCENTO = "C4A27C";  // filetti e bordi: marrone chiaro
+const ACCENTO_TESTO = "8A6240"; // titoli di terzo livello
+const GRIGIO = "7A6F66";
+const CODICE_SFONDO = "F8F5F0";
 
 // "testo con `codice` e **grassetto**" -> TextRun
 function runs(testo, base = {}) {
@@ -19,7 +20,7 @@ function runs(testo, base = {}) {
   while ((m = re.exec(testo))) {
     if (m.index > ultimo) out.push(new TextRun({ text: testo.slice(ultimo, m.index), ...base }));
     const s = m[0];
-    if (s.startsWith("`")) out.push(new TextRun({ text: s.slice(1, -1), font: "Consolas", size: 19, color: "0B5394", ...omit(base, ["font", "size"]) }));
+    if (s.startsWith("`")) out.push(new TextRun({ text: s.slice(1, -1), font: "Consolas", size: 19, color: "7A4A2A", ...omit(base, ["font", "size"]) }));
     else if (s.startsWith("**")) out.push(...runs(s.slice(2, -2), { ...base, bold: true }));
     else out.push(...runs(s.slice(1, -1), { ...base, italics: true }));
     ultimo = m.index + s.length;
@@ -69,7 +70,7 @@ function codice(testo, titolo) {
 // Riquadro evidenziato (per "All'orale", "In breve", avvertenze).
 function riquadro(titolo, paragrafi) {
   const stile = {
-    shading: { type: ShadingType.CLEAR, fill: "EAF2FB", color: "auto" },
+    shading: { type: ShadingType.CLEAR, fill: "FBF7F1", color: "auto" },
     border: { left: { style: BorderStyle.SINGLE, size: 24, color: ACCENTO, space: 8 } },
     indent: { left: 160, right: 160 },
   };
@@ -85,13 +86,13 @@ function tabella(intestazione, righe, larghezze) {
   const scala = LARGHEZZA / tot;
   const w = larghezze.map(x => Math.round(x * scala));
   w[w.length - 1] += LARGHEZZA - w.reduce((a, b) => a + b, 0);
-  const bordo = { style: BorderStyle.SINGLE, size: 4, color: "C9D3E0" };
+  const bordo = { style: BorderStyle.SINGLE, size: 4, color: "E3D8C8" };
   const bordi = { top: bordo, bottom: bordo, left: bordo, right: bordo };
   const cella = (testo, i, intest, pari) => new TableCell({
     width: { size: w[i], type: WidthType.DXA }, borders: bordi,
-    shading: intest ? { type: ShadingType.CLEAR, fill: BLU, color: "auto" } : (pari ? { type: ShadingType.CLEAR, fill: "F2F5FA", color: "auto" } : undefined),
+    shading: intest ? { type: ShadingType.CLEAR, fill: "EFE5D6", color: "auto" } : (pari ? { type: ShadingType.CLEAR, fill: "FBF8F3", color: "auto" } : undefined),
     margins: { top: 60, bottom: 60, left: 100, right: 100 },
-    children: [new Paragraph({ children: runs(testo, intest ? { bold: true, color: "FFFFFF", size: 19 } : { size: 19 }), spacing: { after: 0, line: 252 } })],
+    children: [new Paragraph({ children: runs(testo, intest ? { bold: true, color: BLU, size: 19 } : { size: 19 }), spacing: { after: 0, line: 252 } })],
   });
   return new Table({
     width: { size: LARGHEZZA, type: WidthType.DXA }, columnWidths: w,
@@ -139,7 +140,7 @@ const stili = {
       run: { size: 26, bold: true, color: BLU, font: "Calibri" },
       paragraph: { spacing: { before: 280, after: 120 }, outlineLevel: 1, keepNext: true } },
     { id: "Heading3", name: "Heading 3", basedOn: "Normal", next: "Normal", quickFormat: true,
-      run: { size: 23, bold: true, color: ACCENTO, font: "Calibri" },
+      run: { size: 23, bold: true, color: ACCENTO_TESTO, font: "Calibri" },
       paragraph: { spacing: { before: 200, after: 80 }, outlineLevel: 2, keepNext: true } },
   ],
 };
