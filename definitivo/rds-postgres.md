@@ -68,7 +68,7 @@ Scelte del progetto, da confermare alla creazione (per esempio che la classe sia
 | Voce | Valore |
 | --- | --- |
 | Identificativo | `real-estate-prod-db` |
-| Motore | RDS for PostgreSQL **17** (ultima minor disponibile alla creazione), *auto minor version upgrade* attivo |
+| Motore | RDS for PostgreSQL **18** (ultima minor disponibile alla creazione, oggi 18.6), *auto minor version upgrade* attivo |
 | Deployment | **Multi-AZ DB instance** (una standby) |
 | Primaria | AZ-1 `eu-south-1a`, `private_subnet_A` |
 | Standby | AZ-2 `eu-south-1b`, `private_subnet_B` (solo failover, non leggibile) |
@@ -90,7 +90,12 @@ la copia sincrona.
 
 Perché questi valori:
 
-- **PostgreSQL 17**: versione recente e matura, supportata da RDS Proxy a Milano (che arriva fino alla 18).
+- **PostgreSQL 18** (oggi 18.6, con aggiornamento automatico delle minor): è la major più recente disponibile su RDS
+  (ottobre 2026) ed è supportata da RDS Proxy a Milano. Rispetto alla 17 ha un anno di supporto standard in più su RDS
+  (fino a febbraio 2031 contro febbraio 2030), quindi rimanda di un anno il primo aggiornamento di major obbligatorio.
+  La 19 non è ancora utilizzabile: è in release candidate, con uscita della community prevista per il 19 novembre
+  2026, e RDS la rende disponibile entro 30 giorni dalla prima minor (19.1); anche una volta uscita, per un progetto
+  conviene aspettare che il proxy e le estensioni la supportino.
 - **`db.t4g.micro`**: la più piccola, con traffico da demo; il Multi-AZ la raddoppia comunque (si pagano due istanze).
 - **gp3 da 20 GiB**: i dati sono testo, le foto e i video stanno su S3; con gp3 IOPS e throughput di base non dipendono
   dalla dimensione, come invece succede con gp2.
@@ -184,7 +189,7 @@ allarme a 5-10 € e il Pricing Calculator; a fine prove si cancellano istanza e
 
 ## Punti aperti
 
-- Classe d'istanza: `db.t4g.micro` va confermata come ordinabile in `eu-south-1` per PostgreSQL 17 in Multi-AZ; se
+- Classe d'istanza: `db.t4g.micro` va confermata come ordinabile in `eu-south-1` per PostgreSQL 18 in Multi-AZ; se
   non lo fosse, `db.t3.micro`.
 - Da verificare in prova: un failover forzato (*Reboot with failover*) con le Lambda collegate al proxy, per misurare
   quanto dura davvero.
@@ -196,6 +201,7 @@ allarme a 5-10 € e il Pricing Calculator; a fine prove si cancellano istanza e
 - [Failover di una Multi-AZ DB instance (60-120 s, cause, DNS)](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.MultiAZ.Failover.html)
 - [RDS Proxy durante il failover](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy.howitworks.html#rds-proxy-failover)
 - [Limiti di RDS Proxy con RDS for PostgreSQL](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy.html#rds-proxy.limitations-pg)
+- [Calendario delle versioni di RDS for PostgreSQL (major e minor, fine del supporto)](https://docs.aws.amazon.com/AmazonRDS/latest/PostgreSQLReleaseNotes/postgresql-release-calendar.html)
 - [Regioni e versioni di RDS Proxy con RDS for PostgreSQL](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.RDS_Fea_Regions_DB-eng.Feature.RDSProxy.html)
 - [Retention dei backup](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithAutomatedBackups.BackupRetention.html)
 - [Point-in-time recovery](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_PIT.html)
