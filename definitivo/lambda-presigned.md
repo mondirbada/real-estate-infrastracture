@@ -9,7 +9,7 @@ non chiama S3 e non fa da tramite per i dati. Sta nella VPC per il controllo nel
 | Direzione | Con chi | Come |
 | --- | --- | --- |
 | Invocata da | [API Gateway](api-gateway.md) | `POST /properties/{id}/uploads`, invocazione sincrona |
-| Chiama | [RDS Proxy](rds-proxy.md) → [Aurora](aurora.md) | PostgreSQL 5432, TLS, token IAM come `presigned_user` |
+| Chiama | [RDS Proxy](rds-proxy.md) → [RDS for PostgreSQL](rds-postgres.md) | PostgreSQL 5432, TLS, token IAM come `presigned_user` |
 | Firma per | [S3](s3.md), bucket dei file | nessuna chiamata di rete: firma SigV4 locale con le credenziali del ruolo |
 | Usato da | browser | il presigned POST va dal browser al bucket |
 | Scrive i log in | [CloudWatch](cloudwatch.md) | log group `/aws/lambda/real-estate-prod-presigned` |

@@ -1,7 +1,7 @@
 # Architettura — visione d'insieme
 
 Piattaforma immobiliare serverless in `eu-south-1` (Milano). Il frontend è una SPA React servita da CloudFront; il
-backend è un'HTTP API di API Gateway che invoca sei Lambda; i dati stanno in Aurora PostgreSQL dietro un RDS Proxy e i
+backend è un'HTTP API di API Gateway che invoca sei Lambda; i dati stanno in RDS for PostgreSQL (Multi-AZ) dietro un RDS Proxy e i
 file degli annunci in S3; le notifiche email passano da SNS, SQS e SES. Diagramma: [README](README.md#diagramma).
 
 ## Componenti
@@ -23,7 +23,7 @@ file degli annunci in S3; le notifiche email passano da SNS, SQS e SES. Diagramm
 | Rete | VPC con due subnet private | `real-estate-prod-vpc` | [vpc.md](vpc.md) |
 | Rete | Endpoint VPC (SNS, Secrets Manager, S3) | — | [vpc-endpoints.md](vpc-endpoints.md) |
 | Database | RDS Proxy | `real-estate-prod-db-proxy` | [rds-proxy.md](rds-proxy.md) |
-| Database | Aurora PostgreSQL, writer + reader | `real-estate-prod-aurora` | [aurora.md](aurora.md) |
+| Database | RDS for PostgreSQL Multi-AZ, primaria + standby | `real-estate-prod-db` | [rds-postgres.md](rds-postgres.md) |
 | Database | Secrets Manager, un secret per utente PostgreSQL | `real-estate/prod/database/<DB_USER>` | [secrets-manager.md](secrets-manager.md) |
 | Sicurezza | KMS (chiavi di cifratura) | `aws/rds`, `aws/secretsmanager` | [kms.md](kms.md) |
 | Notifiche | SNS, topic | `real-estate-prod-notifications` | [sns.md](sns.md) |
@@ -37,7 +37,7 @@ Tre idee tengono insieme il progetto:
 
 1. **Frontend statico** (CloudFront + S3): nessun server, la logica di presentazione gira nel browser.
 2. **Backend serverless** (API Gateway + Lambda): si paga per richiesta e AWS gestisce i server.
-3. **Lo stato sta nei servizi di dati** (Aurora, S3), non nelle Lambda, che sono effimere.
+3. **Lo stato sta nei servizi di dati** (RDS, S3), non nelle Lambda, che sono effimere.
 
 ## Dove vive ogni servizio
 
@@ -45,7 +45,7 @@ Tre idee tengono insieme il progetto:
 | --- | --- | --- |
 | Globale | CloudFront, IAM | Nessuna regione da scegliere; il certificato ACM per CloudFront, se servisse, va in `us-east-1` |
 | Regionale, **fuori** dalla VPC | S3, API Gateway, Cognito, SNS, SQS, SES, CloudWatch, Secrets Manager, la Mailer Lambda | Niente security group: si proteggono con **IAM** (identity policy e resource policy) |
-| **Dentro** la VPC | Aurora, RDS Proxy, le ENI delle 5 Lambda di business, gli interface endpoint | Hanno security group; per raggiungere i servizi AWS servono gli endpoint VPC |
+| **Dentro** la VPC | RDS for PostgreSQL, RDS Proxy, le ENI delle 5 Lambda di business, gli interface endpoint | Hanno security group; per raggiungere i servizi AWS servono gli endpoint VPC |
 
 ## Flussi end-to-end
 
@@ -62,7 +62,7 @@ Tre idee tengono insieme il progetto:
    PKCE, email come attributo di accesso. Cognito restituisce ID token, access token e refresh token; la SPA li tiene
    in memoria. L'ID token le serve solo per sapere chi è loggato.
 2. Subito dopo ogni login la SPA chiama `PUT /users/me` con l'**access token** ([api-gateway.md](api-gateway.md)): la
-   Users Lambda ([lambda-users.md](lambda-users.md)) crea o aggiorna la riga dell'utente in Aurora con il solo `sub`
+   Users Lambda ([lambda-users.md](lambda-users.md)) crea o aggiorna la riga dell'utente nel database con il solo `sub`
    preso dai claim. L'email resta solo in Cognito.
 3. Al nuovo utente può arrivare l'email di benvenuto (flusso 8).
 
@@ -77,7 +77,7 @@ Tre idee tengono insieme il progetto:
 4. La Lambda controlla il **ruolo** (gruppo) e, dove serve, l'**ownership** con una query.
 5. Per il database la Lambda calcola in locale un token IAM e si collega al proxy su 5432 con TLS
    ([rds-proxy.md](rds-proxy.md)); il proxy, con il suo ruolo, usa la password letta da Secrets Manager
-   ([secrets-manager.md](secrets-manager.md)) per parlare con Aurora ([aurora.md](aurora.md)).
+   ([secrets-manager.md](secrets-manager.md)) per parlare con il database ([rds-postgres.md](rds-postgres.md)).
 
 ### 4. Annunci: consultazione e gestione
 
@@ -149,8 +149,8 @@ Tre idee tengono insieme il progetto:
 ### 10. Log e monitoraggio
 
 Tutte le Lambda e lo stage dell'HTTP API scrivono i log in CloudWatch; le metriche dei servizi alimentano gli allarmi
-(errori delle Lambda, messaggi nella DLQ, messaggi vecchi in coda, errori permanenti della Mailer, CPU e connessioni di
-Aurora), che avvisano il team via email tramite il topic `real-estate-prod-ops-alerts` ([cloudwatch.md](cloudwatch.md)).
+(errori delle Lambda, messaggi nella DLQ, messaggi vecchi in coda, errori permanenti della Mailer, CPU e connessioni del
+database, failover di RDS), che avvisano il team via email tramite il topic `real-estate-prod-ops-alerts` ([cloudwatch.md](cloudwatch.md)).
 
 ## Scelte di fondo
 
@@ -164,22 +164,24 @@ Aurora), che avvisano il team via email tramite il topic `real-estate-prod-ops-a
 | Access token verso l'API, email solo in Cognito | Buona pratica OIDC; nessuna email nei token, nelle richieste, negli eventi o nel database: la legge la Mailer con `AdminGetUser` ([cognito.md](cognito.md#decisione-allapi-va-laccess-token)) |
 | Nessuna password nel codice | Lambda → proxy con IAM; la password del DB la legge solo il proxy ([rds-proxy.md](rds-proxy.md)) |
 | Least privilege | Un execution role per Lambda, un utente PostgreSQL per Lambda, resource policy con `aws:SourceArn` ([iam.md](iam.md)) |
-| Cifratura ovunque | In transito: HTTPS (CloudFront reindirizza HTTP su HTTPS, le bucket policy negano le richieste senza TLS), "Require TLS" sull'RDS Proxy e TLS tra proxy e Aurora. A riposo: Aurora con KMS `aws/rds`, S3 con SSE-S3, SQS con SSE-SQS, secret con `aws/secretsmanager` ([kms.md](kms.md)) |
+| Cifratura ovunque | In transito: HTTPS (CloudFront reindirizza HTTP su HTTPS, le bucket policy negano le richieste senza TLS), "Require TLS" sull'RDS Proxy e TLS tra proxy e database. A riposo: RDS con KMS `aws/rds`, S3 con SSE-S3, SQS con SSE-SQS, secret con `aws/secretsmanager` ([kms.md](kms.md)) |
 | CORS in due punti | Il sito (dominio CloudFront) chiama due origini: l'HTTP API ammette solo l'origine del sito con gli header `Authorization` e `Content-Type` ([api-gateway.md](api-gateway.md#cors)); il bucket dei file permette il `POST` degli upload dalla stessa origine ([s3.md](s3.md#cors-del-bucket-dei-file)) |
 | Nomi espliciti | Convenzione `real-estate-<ambiente>-<componente>-<scopo>`, con ambiente `prod` |
 
 ## Ordine di creazione
 
-1. Cluster Aurora, writer e reader nelle due AZ; verificare il service-linked role di RDS ([aurora.md](aurora.md)).
+1. Istanza RDS for PostgreSQL Multi-AZ, primaria in AZ-1 e standby in AZ-2; verificare il service-linked role di RDS
+   ([rds-postgres.md](rds-postgres.md)).
 2. Utenti PostgreSQL applicativi e relativi `GRANT`.
 3. Un secret per ciascun utente, con le credenziali corrispondenti a quelle del DB ([secrets-manager.md](secrets-manager.md)).
 4. Ruolo del proxy con trust RDS e policy di lettura dei secret ([rds-proxy.md](rds-proxy.md)).
-5. Proxy: associare ruolo e secret, registrare il cluster come target, richiedere IAM per i client e TLS.
+5. Proxy: associare ruolo e secret, registrare l'istanza come target, richiedere IAM per i client e TLS.
 6. Inserire l'ID del proxy (`prx-...`) nelle policy degli execution role delle Lambda ([lambda.md](lambda.md)).
 7. Configurare il client PostgreSQL delle Lambda per token IAM e TLS verso il proxy.
 8. Topic, coda e DLQ con le configurazioni di `config/`, la queue policy e la sottoscrizione ([sqs.md](sqs.md), [sns.md](sns.md));
    event source mapping della Mailer ([lambda-mailer.md](lambda-mailer.md#event-source-mapping)); topic
-   `real-estate-prod-ops-alerts` con la sottoscrizione email del team, metric filter e allarmi ([cloudwatch.md](cloudwatch.md)).
+   `real-estate-prod-ops-alerts` con la sottoscrizione email del team, metric filter, allarmi ed event subscription di
+   RDS ([cloudwatch.md](cloudwatch.md)).
 9. Bucket con Block Public Access, distribuzioni CloudFront con OAC e bucket policy; poi CORS e notifica S3 sul bucket
    dei file ([s3.md](s3.md), [cloudfront.md](cloudfront.md)).
 10. HTTP API con authorizer JWT, route, CORS e permessi di invocazione delle Lambda ([api-gateway.md](api-gateway.md)).
@@ -192,7 +194,7 @@ La rete (VPC, subnet, security group, endpoint) è il prerequisito di tutti i pa
 > **Seguimi una richiesta "crea un'offerta" dal clic al database.**
 > SPA → HTTP API con l'access token → authorizer JWT (firma, issuer, `client_id`) → Offers Lambda (permesso di invocazione
 > sulla funzione) → controllo del gruppo `buyer` → token IAM e connessione TLS al proxy (`rds-db:connect` come
-> `offers_user`) → il proxy usa la password dal secret → Aurora. Poi `sns:Publish` sul topic tramite l'endpoint SNS,
+> `offers_user`) → il proxy usa la password dal secret → RDS for PostgreSQL. Poi `sns:Publish` sul topic tramite l'endpoint SNS,
 > con il `recipientSub` del proprietario; la Mailer chiede la sua email a Cognito e la invia con SES.
 >
 > **E se l'email della notifica non parte?**
@@ -208,9 +210,10 @@ La rete (VPC, subnet, security group, endpoint) è il prerequisito di tutti i pa
 > Non chiamiamo API esterne e i servizi AWS li raggiungiamo con gli endpoint VPC. Il NAT sarebbe un costo fisso orario
 > per niente; se un giorno servisse un'API esterna aggiungeremmo una subnet pubblica per AZ con un NAT.
 >
-> **Cosa succede se cade AZ-1? E se cade solo il writer?**
-> Aurora promuove la reader dell'altra AZ in genere in decine di secondi; il proxy, che punta al cluster, mantiene le
-> connessioni dei client e si ricollega al nuovo writer. Proxy, Lambda ed endpoint hanno già ENI in entrambe le subnet.
+> **Cosa succede se cade AZ-1? E se cade solo la primaria?**
+> RDS promuove la standby dell'altra AZ, che ha già tutti i dati perché la replica è sincrona, in genere in 60-120
+> secondi; il proxy mantiene le connessioni dei client e le porta sulla nuova primaria senza aspettare il DNS. Proxy,
+> Lambda ed endpoint hanno già ENI in entrambe le subnet.
 >
 > **Dove sta la password del database e chi la legge?**
 > In Secrets Manager, cifrata con KMS. La legge solo il ruolo del proxy; le Lambda entrano nel proxy con un token IAM

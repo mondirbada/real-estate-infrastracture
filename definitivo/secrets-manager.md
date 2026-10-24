@@ -10,14 +10,14 @@ per utente. Le legge **solo il ruolo dell'RDS Proxy**; le Lambda non le leggono 
 | Letto da | [RDS Proxy](rds-proxy.md) | `secretsmanager:GetSecretValue` con il ruolo `real-estate-prod-rds-proxy-secrets-role`, eventualmente tramite l'[interface endpoint](vpc-endpoints.md) |
 | **Non** letto da | le Lambda | entrano nel proxy con IAM |
 | Cifrato con | [KMS](kms.md) | chiave `aws/secretsmanager` |
-| Corrisponde a | [Aurora](aurora.md#utenti-postgresql) | utenti PostgreSQL esistenti |
+| Corrisponde a | [RDS for PostgreSQL](rds-postgres.md#utenti-postgresql) | utenti PostgreSQL esistenti |
 
 ## Cos'è
 
 - **Secret**: un JSON cifrato con KMS, qui `{"username": "...", "password": "..."}`, il formato atteso dal proxy.
 - **Versioni**: `AWSCURRENT`, `AWSPREVIOUS`, che permettono la rotazione senza interruzioni.
 - **Rotazione**: una Lambda di rotazione cambia la password nel database e nel secret secondo una schedule; per RDS ci
-  sono template pronti. Aurora può anche gestire da sola la password master in Secrets Manager.
+  sono template pronti. RDS può anche gestire da sola la password master in Secrets Manager.
 - **Resource policy** sul secret: facoltativa, serve per accessi cross-account.
 - Alternativa più economica per valori semplici: SSM Parameter Store.
 
@@ -26,7 +26,7 @@ per utente. Le legge **solo il ruolo dell'RDS Proxy**; le Lambda non le leggono 
 - Un secret per ogni utente PostgreSQL usato dal proxy: `real-estate/<ENVIRONMENT>/database/<DB_USER>`, cioè
   `real-estate/prod/database/property_user`, `.../users_user`, `.../offers_user`, `.../files_user`,
   `.../presigned_user`.
-- Ogni secret contiene almeno `username` e `password`, corrispondenti a un utente esistente in Aurora.
+- Ogni secret contiene almeno `username` e `password`, corrispondenti a un utente esistente nel database.
 - I valori si inseriscono direttamente in Secrets Manager con un percorso di configurazione sicuro: **mai nella
   repository**.
 - Un secret non crea l'utente PostgreSQL e non gli assegna permessi SQL.
@@ -88,7 +88,7 @@ per AZ.
 
 ## Riferimenti
 
-- [Credenziali Secrets Manager per RDS Proxy](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/rds-proxy-secrets-arns.html)
+- [Credenziali Secrets Manager per RDS Proxy](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy-secrets-arns.html)
 - [Autorizzazioni per leggere i secret](https://docs.aws.amazon.com/secretsmanager/latest/userguide/auth-and-access_iam-policies.html)
 
 ## All'orale

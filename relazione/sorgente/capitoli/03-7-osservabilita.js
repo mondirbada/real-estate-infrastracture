@@ -12,7 +12,7 @@ module.exports = ({ S, leggiJson, DIAGRAMMI }) => {
   h3("Il percorso"),
   ...elencoNumerato([
     "Ogni Lambda scrive nel log group `/aws/lambda/<nome-funzione>`; lo stage dell'HTTP API scrive il suo access log.",
-    "I servizi pubblicano le loro metriche: errori delle Lambda, CPU e connessioni di Aurora, età dei messaggi nelle code.",
+    "I servizi pubblicano le loro metriche: errori delle Lambda, CPU e connessioni del database, età dei messaggi nelle code.",
     "Per ciò che esiste solo nei log, un **metric filter** trasforma le righe che corrispondono a un pattern in una metrica.",
     "Un allarme che supera la soglia pubblica sul topic, che consegna l'email al team.",
   ]),
@@ -42,7 +42,7 @@ module.exports = ({ S, leggiJson, DIAGRAMMI }) => {
       ["Messaggi vecchi in coda", "la Mailer è ferma; lo si vede prima della DLQ"],
       ["Errori permanenti della Mailer", "email scartate senza ritentare"],
       ["Errori delle Lambda", "una funzione sta fallendo"],
-      ["CPU e connessioni di Aurora", "il database è sotto pressione (soglie da fissare)"],
+      ["CPU e connessioni del database", "il database è sotto pressione (soglie da fissare)"],
       ["Pulizia dei file non riuscita", "cancellato un immobile, dei file sono rimasti su S3 (3.4)"],
     ],
     [3600, 6000],
@@ -50,7 +50,7 @@ module.exports = ({ S, leggiJson, DIAGRAMMI }) => {
   dopoTabella(),
 
   h3("Quando qualcosa va storto"),
-  p("Se nessuno conferma la sottoscrizione email, gli allarmi non arrivano: è la prima cosa da verificare. Le soglie di Aurora sono ancora da fissare. Gli allarmi coprono il backend, non l'esperienza nel browser."),
+  p("Se nessuno conferma la sottoscrizione email, gli allarmi non arrivano: è la prima cosa da verificare. Le soglie del database sono ancora da fissare. Gli allarmi coprono il backend, non l'esperienza nel browser."),
 
   h3("Le scelte"),
   p("Pochi allarmi, ciascuno legato a un'azione umana, verso un solo topic separato. Nessun endpoint VPC per i log, che costerebbe senza servire."),

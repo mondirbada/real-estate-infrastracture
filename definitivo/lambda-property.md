@@ -8,7 +8,7 @@ pubblica un evento di notifica sul topic SNS. Sta nella VPC perché legge e scri
 | Direzione | Con chi | Come |
 | --- | --- | --- |
 | Invocata da | [API Gateway](api-gateway.md) | route `/properties`, invocazione sincrona |
-| Chiama | [RDS Proxy](rds-proxy.md) → [Aurora](aurora.md) | PostgreSQL 5432, TLS, token IAM come `property_user` |
+| Chiama | [RDS Proxy](rds-proxy.md) → [RDS for PostgreSQL](rds-postgres.md) | PostgreSQL 5432, TLS, token IAM come `property_user` |
 | Chiama | [SNS](sns.md) | `sns:Publish` tramite l'[interface endpoint SNS](vpc-endpoints.md) |
 | Chiama | [S3](s3.md), bucket dei file | `ListObjectsV2` e `DeleteObjects` sul prefisso `uploads/<propertyId>/`, tramite il [gateway endpoint S3](vpc-endpoints.md), solo quando cancella un immobile |
 | Scrive i log in | [CloudWatch](cloudwatch.md) | log group `/aws/lambda/real-estate-prod-property` |
@@ -67,7 +67,7 @@ Casi limite:
 
 ### Immobili ritirati
 
-Un immobile ha `status` = `active` oppure `withdrawn` ([aurora.md](aurora.md#dati-personali-niente-email-nel-database)).
+Un immobile ha `status` = `active` oppure `withdrawn` ([rds-postgres.md](rds-postgres.md#dati-personali-niente-email-nel-database)).
 Oggi diventa `withdrawn` in un solo caso: quando il proprietario cancella l'account, e a cambiarlo è la Users Lambda
 nella transazione di `DELETE /users/me` ([lambda-users.md](lambda-users.md#cancellazione-dellaccount-anonimizzazione)).
 Un immobile ritirato:
@@ -84,7 +84,7 @@ I suoi file restano su S3 e nel database: sono le foto della casa, non dati pers
 
 - Runtime nella VPC: subnet `private_subnet_A` e `private_subnet_B`, security group `sg-lambda-internal` ([vpc.md](vpc.md)).
 - Connessione al proxy aperta fuori dall'handler, con token IAM e TLS.
-- Utente PostgreSQL `property_user`, con i `GRANT` sulle tabelle degli annunci ([aurora.md](aurora.md#utenti-postgresql)).
+- Utente PostgreSQL `property_user`, con i `GRANT` sulle tabelle degli annunci ([rds-postgres.md](rds-postgres.md#utenti-postgresql)).
 
 ## IAM
 
@@ -148,7 +148,7 @@ e `<FUNCTION_NAME>` = `real-estate-prod-property` ([api-gateway.md](api-gateway.
 ## Sicurezza e rete
 
 - In uscita: 5432 verso `sg-rds-proxy`, 443 verso `sg-endpoint-sns`, 443 verso la prefix list di S3 (gateway
-  endpoint). Nessun accesso diretto ad Aurora.
+  endpoint). Nessun accesso diretto al database.
 - Su S3 può solo elencare e cancellare sotto `uploads/`, e lo fa solo nella cancellazione di un immobile. Caricare
   file resta compito di Presigned, registrarli e cancellarli uno per uno di Files.
 

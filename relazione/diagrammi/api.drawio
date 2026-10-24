@@ -1,5 +1,5 @@
 <mxfile host="Electron" agent="generator" version="24.0.0">
-  <diagram id="rei-v3" name="AWS Infrastructure v3">
+  <diagram id="rei-v4" name="AWS Infrastructure v4">
     <mxGraphModel dx="2100" dy="1840" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2100" pageHeight="1840" math="0" shadow="0" background="#FFFFFF">
       <root>
         <mxCell id="0" />
@@ -166,7 +166,7 @@
         <mxCell id="sg_rds_a" value="sg-rds" style="opacity=12;textOpacity=12;rounded=0;fillColor=none;strokeColor=#2E9E3E;strokeWidth=2;dashed=1;dashPattern=6 4;verticalAlign=top;align=left;spacingLeft=6;spacingTop=-2;fontFamily=Courier New;fontSize=10;fontStyle=1;fontColor=#1E7B34;whiteSpace=wrap;html=1;container=1;collapsible=0;recursiveResize=0;" vertex="1" parent="subA">
           <mxGeometry x="200" y="68" width="220" height="160" as="geometry" />
         </mxCell>
-        <mxCell id="writer" value="Aurora PostgreSQL&lt;br&gt;– writer" style="opacity=12;textOpacity=12;sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;fontStyle=0;aspect=fixed;pointerEvents=1;labelBackgroundColor=none;fillColor=#C925D1;strokeColor=none;shape=mxgraph.aws4.rds_instance;" vertex="1" parent="sg_rds_a">
+        <mxCell id="writer" value="RDS PostgreSQL&lt;br&gt;– primaria" style="opacity=12;textOpacity=12;sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;fontStyle=0;aspect=fixed;pointerEvents=1;labelBackgroundColor=none;fillColor=#C925D1;strokeColor=none;shape=mxgraph.aws4.rds_postgresql_instance;" vertex="1" parent="sg_rds_a">
           <mxGeometry x="86" y="40" width="48" height="48" as="geometry" />
         </mxCell>
         <mxCell id="az2" value="AZ-2 eu-south-1b" style="opacity=12;textOpacity=12;fillColor=none;strokeColor=#147EBA;dashed=1;verticalAlign=top;align=left;spacingLeft=8;fontStyle=1;fontSize=12;fontColor=#147EBA;whiteSpace=wrap;html=1;container=1;collapsible=0;recursiveResize=0;" vertex="1" parent="vpc">
@@ -178,10 +178,10 @@
         <mxCell id="sg_rds_b" value="sg-rds" style="opacity=12;textOpacity=12;rounded=0;fillColor=none;strokeColor=#2E9E3E;strokeWidth=2;dashed=1;dashPattern=6 4;verticalAlign=top;align=left;spacingLeft=6;spacingTop=-2;fontFamily=Courier New;fontSize=10;fontStyle=1;fontColor=#1E7B34;whiteSpace=wrap;html=1;container=1;collapsible=0;recursiveResize=0;" vertex="1" parent="subB">
           <mxGeometry x="285" y="68" width="220" height="160" as="geometry" />
         </mxCell>
-        <mxCell id="reader" value="Aurora PostgreSQL&lt;br&gt;– reader (failover)" style="opacity=12;textOpacity=12;sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;fontStyle=0;aspect=fixed;pointerEvents=1;labelBackgroundColor=none;fillColor=#C925D1;strokeColor=none;shape=mxgraph.aws4.rds_instance;" vertex="1" parent="sg_rds_b">
+        <mxCell id="reader" value="RDS PostgreSQL – standby&lt;br&gt;(sincrona, non leggibile)" style="opacity=12;textOpacity=12;sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;fontStyle=0;aspect=fixed;pointerEvents=1;labelBackgroundColor=none;fillColor=#C925D1;strokeColor=none;shape=mxgraph.aws4.rds_postgresql_instance;" vertex="1" parent="sg_rds_b">
           <mxGeometry x="86" y="40" width="48" height="48" as="geometry" />
         </mxCell>
-        <mxCell id="cluster" value="cluster real-estate-prod-aurora" style="opacity=12;textOpacity=12;rounded=1;arcSize=6;absoluteArcSize=1;fillColor=none;strokeColor=#C925D1;strokeWidth=1.5;dashed=1;dashPattern=8 4;verticalAlign=top;align=left;spacingLeft=145;spacingTop=2;fontFamily=Courier New;fontSize=10;fontStyle=1;fontColor=#9B1FA3;whiteSpace=wrap;html=1;" vertex="1" parent="vpc">
+        <mxCell id="cluster" value="real-estate-prod-db (RDS Multi-AZ)" style="opacity=12;textOpacity=12;rounded=1;arcSize=6;absoluteArcSize=1;fillColor=none;strokeColor=#C925D1;strokeWidth=1.5;dashed=1;dashPattern=8 4;verticalAlign=top;align=left;spacingLeft=490;spacingTop=2;fontFamily=Courier New;fontSize=10;fontStyle=1;fontColor=#9B1FA3;whiteSpace=wrap;html=1;" vertex="1" parent="vpc">
           <mxGeometry x="235" y="580" width="1015" height="195" as="geometry" />
         </mxCell>
         <mxCell id="legend" value="LEGENDA" style="rounded=1;arcSize=4;absoluteArcSize=1;fillColor=#FFFFFF;strokeColor=#545B64;dashed=0;verticalAlign=top;align=left;spacingLeft=8;spacingTop=2;fontStyle=1;fontSize=11;fontColor=#545B64;whiteSpace=wrap;html=1;container=1;collapsible=0;recursiveResize=0;" vertex="1" parent="1">
@@ -281,12 +281,15 @@
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="e8b" value="solo failover" style="opacity=12;textOpacity=12;edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=12;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;endSize=6;strokeWidth=1.5;fontSize=11;labelBackgroundColor=#FFFFFF;strokeColor=#5A6B7B;fontColor=#232F3E;dashed=1;dashPattern=6 4;exitX=1;exitY=0.85;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="1" source="proxy" target="reader">
+        <mxCell id="e8b" value="solo dopo il failover" style="opacity=12;textOpacity=12;edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=12;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;endSize=6;strokeWidth=1.5;fontSize=11;labelBackgroundColor=#FFFFFF;strokeColor=#5A6B7B;fontColor=#232F3E;dashed=1;dashPattern=6 4;exitX=1;exitY=0.85;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="1" source="proxy" target="reader">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
               <mxPoint x="1575" y="1071" />
             </Array>
           </mxGeometry>
+        </mxCell>
+        <mxCell id="e8c" value="replica sincrona" style="opacity=12;textOpacity=12;edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=12;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;endSize=6;strokeWidth=1.5;fontSize=11;labelBackgroundColor=#FFFFFF;strokeColor=#C925D1;fontColor=#9B1FA3;dashed=1;dashPattern=6 4;exitX=1;exitY=0.5;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="1" source="writer" target="reader">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e9a" value="GetSecretValue" style="opacity=12;textOpacity=12;edgeStyle=orthogonalEdgeStyle;rounded=1;arcSize=12;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;endSize=6;strokeWidth=1.5;fontSize=11;labelBackgroundColor=#FFFFFF;strokeColor=#5A6B7B;fontColor=#232F3E;dashed=1;dashPattern=6 4;exitX=1;exitY=0.25;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="1" source="proxy" target="ep_sm">
           <mxGeometry relative="1" as="geometry">

@@ -8,7 +8,7 @@ eventi da notificare (nuova offerta al proprietario, esito all'acquirente). Sta 
 | Direzione | Con chi | Come |
 | --- | --- | --- |
 | Invocata da | [API Gateway](api-gateway.md) | route delle offerte, invocazione sincrona |
-| Chiama | [RDS Proxy](rds-proxy.md) → [Aurora](aurora.md) | PostgreSQL 5432, TLS, token IAM come `offers_user` |
+| Chiama | [RDS Proxy](rds-proxy.md) → [RDS for PostgreSQL](rds-postgres.md) | PostgreSQL 5432, TLS, token IAM come `offers_user` |
 | Chiama | [SNS](sns.md) | `sns:Publish` tramite l'[interface endpoint SNS](vpc-endpoints.md) |
 | Scrive i log in | [CloudWatch](cloudwatch.md) | log group `/aws/lambda/real-estate-prod-offers` |
 
@@ -91,7 +91,7 @@ Chi la può invocare: API Gateway ([`lambda-allow-api-gateway.json`](iam/resourc
 
 > **Seguimi "crea un'offerta" dal clic al database.**
 > Access token all'HTTP API, authorizer JWT, invocazione della Offers (resource policy), controllo del gruppo `buyer`,
-> token IAM e connessione TLS al proxy come `offers_user`, proxy → Aurora con la password del secret, poi `sns:Publish`
+> token IAM e connessione TLS al proxy come `offers_user`, proxy → database con la password del secret, poi `sns:Publish`
 > sul topic attraverso l'endpoint SNS.
 >
 > **Cosa cambierebbe se la Offers fosse fuori dalla VPC?**

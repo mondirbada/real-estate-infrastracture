@@ -11,7 +11,7 @@ futuri. Ogni riga rimanda al file del servizio che la spiega per intero.
 | --- | --- | --- |
 | Architettura serverless | Traffico basso e variabile: si paga per richiesta, scala da zero, nessun server da gestire | [00-architettura.md](00-architettura.md) |
 | Regione `eu-south-1` (Milano) | Dati in Italia, latenza bassa per utenti italiani; tutti i servizi usati ci sono. È una regione *opt-in*, da abilitare nell'account | [Disponibilità dei servizi](#disponibilità-dei-servizi-a-milano) |
-| Una VPC `10.0.0.0/16` con due subnet private `/24` in due AZ | Il subnet group di Aurora e il proxy chiedono 2 AZ; le `/24` lasciano spazio alle ENI (il proxy vuole almeno 10 IP liberi per subnet) | [vpc.md](vpc.md) |
+| Una VPC `10.0.0.0/16` con due subnet private `/24` in due AZ | Il subnet group di RDS (primaria e standby in AZ diverse) e il proxy chiedono 2 AZ; le `/24` lasciano spazio alle ENI (il proxy vuole almeno 10 IP liberi per subnet) | [vpc.md](vpc.md) |
 | Niente subnet pubbliche, Internet Gateway e NAT | Il traffico utente entra da CloudFront e API Gateway, fuori dalla VPC; non chiamiamo API esterne; il NAT è un costo fisso inutile | [vpc.md](vpc.md) |
 | Endpoint VPC: interface SNS, interface Secrets Manager, gateway S3 (gratuito) | Unico modo per raggiungere i servizi AWS dalla VPC senza NAT; solo quelli che servono davvero | [vpc-endpoints.md](vpc-endpoints.md) |
 | Private DNS sugli interface endpoint (`enableDnsSupport`, `enableDnsHostnames`) | L'SDK usa i nomi standard dei servizi senza modifiche al codice | [vpc-endpoints.md](vpc-endpoints.md) |
@@ -57,14 +57,15 @@ futuri. Ogni riga rimanda al file del servizio che la spiega per intero.
 | In VPC solo le Lambda che usano il database, in entrambe le subnet | Il proxy esiste solo nella VPC | [lambda.md](lambda.md#lambda-nella-vpc) |
 | Presigned Lambda **nella** VPC | Prima di firmare controlla nel database che l'utente sia il proprietario | [lambda-presigned.md](lambda-presigned.md) |
 | Mailer Lambda **fuori** dalla VPC | Non usa il database: niente endpoint per SQS e SES, meno cold start e costi | [lambda-mailer.md](lambda-mailer.md) |
-| Aurora PostgreSQL, un cluster con writer e reader su due AZ | Dati relazionali; failover automatico e storage replicato | [aurora.md](aurora.md) |
+| **RDS for PostgreSQL Multi-AZ DB instance** `real-estate-prod-db`: primaria attiva in AZ-1, standby a riposo in AZ-2, replica sincrona (sostituisce il cluster Aurora) | Dati relazionali. Il cambio è un'**indicazione del docente, per costo e semplicità**: la reader di Aurora serviva solo al failover, e il Multi-AZ di RDS dà la stessa alta disponibilità (failover automatico, stesso endpoint) con un servizio più semplice e meno costoso | [rds-postgres.md](rds-postgres.md) |
+| PostgreSQL 17, `db.t4g.micro`, gp3 20 GiB con autoscaling, backup 7 giorni | Valori minimi sensati per il carico del progetto, dichiarati come scelte | [rds-postgres.md](rds-postgres.md#configurazione) |
 | **Alla cancellazione dell'account anonimizziamo**: immobili e offerte restano senza dati personali. Una transazione della Users Lambda: riga `users` con il solo `sub` e `deleted_at`, immobili a `withdrawn`, offerte `pending` (sue o ricevute) a `withdrawn`; accettate e rifiutate invariate | Le offerte riguardano anche l'altra parte, che va avvisata (`OFFER_WITHDRAWN`); le chiavi esterne restano valide; il `sub` dopo `DeleteUser` non porta a nessuno, perché l'email stava solo in Cognito; niente S3 nella transazione | [lambda-users.md](lambda-users.md#cancellazione-dellaccount-anonimizzazione) |
-| `users_user` con `UPDATE (status)` su `properties` e `offers`, nessun cambio IAM | Il ritiro tocca solo la colonna di stato; IAM decide chi entra nel proxy, i `GRANT` cosa si fa sulle tabelle | [aurora.md](aurora.md#utenti-postgresql) |
+| `users_user` con `UPDATE (status)` su `properties` e `offers`, nessun cambio IAM | Il ritiro tocca solo la colonna di stato; IAM decide chi entra nel proxy, i `GRANT` cosa si fa sulle tabelle | [rds-postgres.md](rds-postgres.md#utenti-postgresql) |
 | Scritture rifiutate (403) per un `sub` con `deleted_at`; `PUT /users/me` risponde 410 e non ricrea il profilo | Un token emesso prima di `DeleteUser` vale fino a 60 minuti: così può solo leggere. Costo: una query per ogni richiesta che scrive | [api-gateway.md](api-gateway.md#authorizer-jwt) |
 | File degli immobili ritirati lasciati su S3 | Sono le foto della casa, non dati personali; la Users Lambda non ha permessi su S3 | [lambda-property.md](lambda-property.md#immobili-ritirati) |
 | RDS Proxy | Pooling delle connessioni delle Lambda, autenticazione IAM, failover più rapido. Non strettamente necessario con il nostro traffico, adottato per sicurezza | [rds-proxy.md](rds-proxy.md) |
-| Lambda → proxy con IAM e TLS; proxy → Aurora con la password del secret | Nessuna password nelle Lambda; la password la vede solo il proxy | [rds-proxy.md](rds-proxy.md) |
-| Un utente PostgreSQL e un secret per ogni Lambda con DB | IAM decide chi entra e con quale utente, i `GRANT` cosa può fare | [aurora.md](aurora.md#utenti-postgresql) |
+| Lambda → proxy con IAM e TLS; proxy → database con la password del secret | Nessuna password nelle Lambda; la password la vede solo il proxy | [rds-proxy.md](rds-proxy.md) |
+| Un utente PostgreSQL e un secret per ogni Lambda con DB | IAM decide chi entra e con quale utente, i `GRANT` cosa può fare | [rds-postgres.md](rds-postgres.md#utenti-postgresql) |
 | Connessione al DB aperta fuori dall'handler | Riuso tra le invocazioni | [lambda.md](lambda.md#connessione-al-database) |
 
 ### Notifiche
@@ -81,6 +82,7 @@ futuri. Ogni riga rimanda al file del servizio che la spiega per intero.
 | Errori temporanei ritentati, errori permanenti loggati e scartati | Ritentare un messaggio malformato, un utente cancellato o un destinatario rifiutato non serve; un metric filter con allarme li rende visibili | [lambda-mailer.md](lambda-mailer.md#classificazione-degli-errori) |
 | Doppioni rari delle email accettati | Coda standard at-least-once; deduplicare richiederebbe un database nella Mailer. I batch parziali li riducono | [lambda-mailer.md](lambda-mailer.md#idempotenza) |
 | Allarmi su DLQ non vuota ed età dei messaggi in coda, verso il topic `real-estate-prod-ops-alerts` con email del team | Qualcuno deve sapere che un'email non è partita | [cloudwatch.md](cloudwatch.md#configurazione) |
+| Event subscription di RDS (`failover`, `failure`) sullo stesso topic | Il failover è un evento, non una metrica: il team deve sapere che la primaria è cambiata | [cloudwatch.md](cloudwatch.md#eventi-di-rds-failover-e-guasti) |
 | Redrive manuale con procedura scritta e policy dell'operatore `ops-dlq-redrive.json` | Si rimandano i messaggi solo dopo aver corretto la causa, a velocità bassa per non saturare SES | [sqs.md](sqs.md#procedura-operativa-quando-scatta-lallarme) |
 | Coda cifrata con SSE-SQS | SNS non consegna a una coda cifrata con `aws/sqs` | [kms.md](kms.md) |
 | `RawMessageDelivery` sulla sottoscrizione | La Mailer riceve il messaggio senza la busta JSON di SNS | [sns.md](sns.md#configurazione) |
@@ -94,8 +96,8 @@ futuri. Ogni riga rimanda al file del servizio che la spiega per intero.
 | Un execution role per Lambda, policy del progetto sugli ARN precisi; policy gestite solo per log e VPC | Least privilege e audit chiari; le azioni ENI richiedono comunque `Resource: "*"` | [lambda.md](lambda.md#iam) |
 | Ruolo del proxy `real-estate-prod-rds-proxy-secrets-role` | Rinominato per seguire la convenzione | [rds-proxy.md](rds-proxy.md#iam) |
 | `aws:SourceArn` (e `aws:SourceAccount` per S3) in tutte le resource policy verso servizi | Prevenire il confused deputy | [iam.md](iam.md#confused-deputy) |
-| Deny delle richieste senza TLS sui bucket; TLS obbligatorio sul proxy e verso Aurora | Cifratura in transito ovunque | [s3.md](s3.md#bucket-policy), [rds-proxy.md](rds-proxy.md) |
-| Cifratura a riposo: Aurora `aws/rds`, S3 SSE-S3, SQS SSE-SQS, secret `aws/secretsmanager` | Chiavi gestite da AWS, gratuite; CMK solo se servisse | [kms.md](kms.md) |
+| Deny delle richieste senza TLS sui bucket; TLS obbligatorio sul proxy e verso il database | Cifratura in transito ovunque | [s3.md](s3.md#bucket-policy), [rds-proxy.md](rds-proxy.md) |
+| Cifratura a riposo: RDS `aws/rds`, S3 SSE-S3, SQS SSE-SQS, secret `aws/secretsmanager` | Chiavi gestite da AWS, gratuite; CMK solo se servisse | [kms.md](kms.md) |
 | `iam:PassRole` dell'identità di deploy limitato ai ruoli del progetto e ai servizi Lambda e RDS | Non si può "prestare" un ruolo a un altro servizio | [iam.md](iam.md#identità-di-deploy-e-iampassrole) |
 | Endpoint policy sull'endpoint SNS (facoltativa) | Least privilege anche sulla rete | [vpc-endpoints.md](vpc-endpoints.md#iam) |
 
@@ -125,7 +127,10 @@ futuri. Ogni riga rimanda al file del servizio che la spiega per intero.
 | NAT Gateway | Costo fisso, nessuna API esterna | Se servisse chiamare un'API esterna: una subnet pubblica per AZ con NAT |
 | RDS Proxy con IAM end-to-end (`DefaultAuthScheme=IAM_AUTH`) | Scelto il modello con secret, più comune e già documentato | Per semplificare: niente secret, endpoint e permessi KMS, ma utenti DB con `rds_iam` |
 | Nessun RDS Proxy | Rischio di esaurire `max_connections`, niente IAM | Poche Lambda con connessioni riusate fuori dall'handler |
-| Aurora Serverless v2 o RDS PostgreSQL Multi-AZ | Aurora provisioned scelto per failover e storage | Serverless v2 (disponibile a Milano) per pagare solo la capacità usata; RDS Multi-AZ più economico |
+| Aurora PostgreSQL, un cluster con writer e reader su due AZ (**la scelta precedente**) | Sostituito su indicazione del docente: più costoso, e la reader serviva solo al failover, non alle letture | Molte letture da distribuire, failover più rapido, storage che cresce da solo |
+| Aurora Serverless v2 | Valutata con Aurora; caduta insieme ad Aurora per semplicità | Carico molto variabile, per pagare solo la capacità usata |
+| RDS Multi-AZ **DB cluster** (una writer e due standby leggibili in tre AZ) | Tre istanze, più costoso; le letture distribuite non ci servono | Se servissero letture dalle standby e failover più rapido |
+| RDS Single-AZ | Nessuna alta disponibilità: se cade l'istanza o la sua AZ il database è fermo | Ambiente di sviluppo o prove brevi |
 | Francoforte o Irlanda | Dati in Italia e latenza | Funzioni nuove disponibili subito, regione non opt-in |
 | Chiave KMS del cliente (CMK) | Le chiavi gestite bastano | Controllo e audit sulla chiave; servono key policy e `rds-proxy-decrypt-secrets.json` |
 | Lambda@Edge o CloudFront Functions | Il sito statico è pubblico, i dati stanno dietro l'API | — |
@@ -149,13 +154,12 @@ a Cognito con `AdminGetUser` ([cognito.md](cognito.md#decisione-allapi-va-lacces
 | Domanda | Stato | Dove |
 | --- | --- | --- |
 | **Endpoint di Secrets Manager per il proxy**: serve? | La documentazione AWS non lo dice. Si verifica alla creazione del proxy: se il target risulta `AVAILABLE` senza endpoint, lo si toglie (e la regola `sg-rds-proxy` → `sg-endpoint-secrets-manager`) risparmiando | [vpc-endpoints.md](vpc-endpoints.md#punti-aperti) |
-| **Uso della reader di Aurora** | Oggi solo failover (l'endpoint di default del proxy va al writer). Per distribuire le letture serve un endpoint di sola lettura del proxy | [aurora.md](aurora.md#punti-aperti) |
+| Classe d'istanza a Milano | `db.t4g.micro` va confermata come ordinabile per PostgreSQL 17 Multi-AZ in `eu-south-1`; altrimenti `db.t3.micro` | [rds-postgres.md](rds-postgres.md#punti-aperti) |
 | Formulazione "per sicurezza" sul proxy | All'orale può suonare come "sicurezza informatica" e far chiedere "quale?". Proposta, non applicata (scelta di parole del team): "per robustezza: le Lambda possono moltiplicare le connessioni, e il proxy ci dà anche l'autenticazione IAM e un failover più rapido" | [rds-proxy.md](rds-proxy.md#perché-cè) |
-| Diagramma valido | La versione di riferimento è [`real-estate-v3.drawio`](diagrammi/real-estate-v3.drawio) (access token, email da Cognito, ciclo della DLQ, nomi completi, freccia Property Lambda → gateway S3); la v2 resta accanto per confronto, lo schema precedente di Tommaso (`updated.drawio`) è in archivio. Il team deve confermare la v3 aprendola in draw.io | [README](README.md#diagramma) |
-| Prove reali | Una connessione al proxy e il comportamento durante il failover del writer vanno verificati creando le risorse | [iam.md](iam.md#verifica-prima-delluso) |
+| Diagramma valido | La versione di riferimento è [`real-estate-v4.drawio`](diagrammi/real-estate-v4.drawio): come la v3 (access token, email da Cognito, ciclo della DLQ, nomi completi, freccia Property Lambda → gateway S3) con RDS for PostgreSQL Multi-AZ al posto del cluster Aurora; la v3 resta accanto per confronto, lo schema precedente di Tommaso (`updated.drawio`) è in archivio. Il team deve confermare la v4 aprendola in draw.io | [README](README.md#diagramma) |
+| Prove reali | Una connessione al proxy e il comportamento durante un failover forzato della primaria vanno verificati creando le risorse | [iam.md](iam.md#verifica-prima-delluso) |
 | Formato di `cognito:groups` nei claim | La documentazione mostra i claim come stringhe; il formato `"[buyer agent]"` dei claim lista va verificato alla prima prova (la funzione comune accetta anche un array) | [api-gateway.md](api-gateway.md#authorizer-jwt) |
 | CSP del sito | I domini della `Content-Security-Policy` vanno provati con la SPA vera | [cloudfront.md](cloudfront.md#header-di-sicurezza-response-headers-policy) |
-| Backup e retention di Aurora | Valori da fissare alla creazione | [aurora.md](aurora.md#punti-aperti) |
 
 ## Disponibilità dei servizi a Milano
 
@@ -163,12 +167,16 @@ a Cognito con `AdminGetUser` ([cognito.md](cognito.md#decisione-allapi-va-lacces
 | --- | --- | --- |
 | Cognito user pool | Sì (verificato: [endpoint Cognito](https://docs.aws.amazon.com/general/latest/gr/cognito_identity.html)) | Anche le identity pool, che non usiamo |
 | SES | Sì via API (verificato: [endpoint SES](https://docs.aws.amazon.com/general/latest/gr/ses.html)) | **L'SMTP non c'è a Milano**: la Mailer usa l'API. In sandbox 200 email ogni 24 ore, 1 al secondo |
-| RDS Proxy con Aurora PostgreSQL | Sì (verificato: [regioni RDS Proxy](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Concepts.Aurora_Fea_Regions_DB-eng.Feature.RDS_Proxy.html), Aurora PostgreSQL dalla 11.9 alla 18.x) | — |
-| Aurora Serverless v2 | Sì (verificato: [regioni Serverless v2](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Concepts.Aurora_Fea_Regions_DB-eng.Feature.ServerlessV2.html)) | Alternativa più economica |
+| RDS Proxy con RDS for PostgreSQL | Sì (verificato: [regioni RDS Proxy](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.RDS_Fea_Regions_DB-eng.Feature.RDSProxy.html), RDS for PostgreSQL dalla 10 alla 18, tutte le minor disponibili) | Con un'istanza Multi-AZ il proxy segue da sé la primaria |
+| RDS for PostgreSQL Multi-AZ DB instance | Sì, è la funzione standard di alta disponibilità di RDS for PostgreSQL ([Multi-AZ DB instance](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.MultiAZSingleStandby.html)); non c'è una tabella per regione, la combinazione classe + versione + Multi-AZ si conferma con `describe-orderable-db-instance-options` | La finestra di manutenzione di default a Milano si sceglie nel blocco 02:00-10:00 UTC |
 | Lambda, HTTP API, S3, SNS, SQS, Secrets Manager, CloudWatch, endpoint VPC `sns`, `secretsmanager` e gateway `s3` | Sì | Servizi di base presenti in tutte le regioni commerciali; non verificati riga per riga |
 | CloudFront, IAM | Globali | Il certificato ACM per CloudFront va in `us-east-1` |
 
-Verificato anche sulla documentazione AWS: il ruolo del proxy (trust, `GetSecretValue`, `kms:Decrypt` con
+Verificato anche sulla documentazione AWS: nel Multi-AZ DB instance la standby è sincrona e non serve letture; failover
+tipico 60-120 secondi con lo stesso nome DNS; durante il failover RDS Proxy accetta connessioni sullo stesso indirizzo
+senza dipendere dal DNS e chiude solo le transazioni in corso; retention dei backup da 0 a 35 giorni (7 di default in
+console), log delle transazioni ogni 5 minuti; patch del sistema operativo prima sulla standby; gp3 da 20 GiB con
+baseline 3000 IOPS; il topic SNS ammette per default gli eventi RDS dello stesso account; il ruolo del proxy (trust, `GetSecretValue`, `kms:Decrypt` con
 `kms:ViaService`) è identico all'esempio ufficiale; prerequisiti di rete del proxy (2 subnet in AZ diverse, 10 IP
 liberi); nelle HTTP API la cache della Lambda Authorizer è facoltativa e per default vale per tutte le route, e
 l'access logging non richiede il ruolo CloudWatch dell'account; SNS non consegna a code cifrate con `aws/sqs`.
@@ -184,22 +192,23 @@ Non verificato puntualmente: che WAF non si associ alle HTTP API; il bisogno del
 ## Sviluppi futuri
 
 - **WAF** davanti all'API, mettendo CloudFront davanti all'HTTP API (WAF è già possibile sulle distribuzioni CloudFront).
-- Endpoint di sola lettura del proxy per usare la reader.
+- Read replica di RDS, con un endpoint del proxy dedicato, se un giorno servisse distribuire le letture.
 - **SES in produzione**: richiesta di uscita dalla sandbox e verifica del dominio del mittente (DKIM).
 - Rotazione automatica dei secret con una Lambda di rotazione.
 - Ambienti separati (oggi c'è solo `prod`), Infrastructure as Code (CloudFormation, Terraform o CDK), stima dei costi con
-  il Pricing Calculator, modello dati, backup e retention di Aurora, scansione antivirus dei file caricati, dominio
+  il Pricing Calculator, modello dati, scansione antivirus dei file caricati, dominio
   personalizzato.
 - Pulizia dei file degli immobili ritirati, riusando la cancellazione di un immobile della Property Lambda (oggi restano
   su S3).
 
 ## Costi complessivi
 
-La parte più costosa è il database: Aurora writer e reader più il proxy, che si paga in base alla capacità del DB. Poi
+La parte più costosa è il database: le due istanze del Multi-AZ (primaria e standby) più il proxy, che si paga in base
+alle vCPU dell'istanza. È comunque meno della coppia writer + reader di Aurora usata prima. Poi
 gli interface endpoint, per AZ (un NAT costerebbe di più). Lambda, API Gateway, S3, SQS, SNS, SES, Cognito e CloudFront
 restano nel livello gratuito o a pochi centesimi con il traffico del progetto. Prima di creare risorse reali: AWS
-Budgets con un allarme a 5-10 € e il Pricing Calculator; a fine prove si cancella ciò che costa anche a vuoto (Aurora,
-proxy, endpoint).
+Budgets con un allarme a 5-10 € e il Pricing Calculator; a fine prove si cancella ciò che costa anche a vuoto (istanza
+RDS, proxy, endpoint).
 
 ## Domande trasversali da preparare
 
@@ -207,7 +216,7 @@ proxy, endpoint).
    ([lambda-offers.md](lambda-offers.md#allorale)).
 2. Cosa cambia se la Offers Lambda è fuori dalla VPC ([lambda-offers.md](lambda-offers.md#allorale)).
 3. Perché niente NAT, e cosa fare se servisse un'API esterna ([vpc.md](vpc.md)).
-4. Cosa succede se cade AZ-1, o solo il writer ([aurora.md](aurora.md#allorale)).
+4. Cosa succede se cade AZ-1, o solo la primaria ([rds-postgres.md](rds-postgres.md#allorale)), e perché non più Aurora.
 5. Come si evita che un utente modifichi gli immobili di un altro ([lambda-property.md](lambda-property.md#allorale)).
 6. Come si fa caricare un video da 200 MB ([lambda-presigned.md](lambda-presigned.md#allorale)).
 7. Come si rende affidabile l'invio email se SES è giù, e cosa si fa quando un messaggio arriva nella DLQ
@@ -247,8 +256,13 @@ proxy, endpoint).
 > **Cosa avete fatto bene, secondo voi?**
 > Ogni scelta ha un motivo scritto e un limite dichiarato (il proxy "non strettamente necessario", le revoche dei token); le
 > domande vere del team sono documentate con la decisione presa; database privato su due AZ, nessun accesso diretto
-> Lambda → Aurora; least privilege con un ruolo per Lambda e trust separate; nessuna password nel repository; ordine di
+> Lambda → database; least privilege con un ruolo per Lambda e trust separate; nessuna password nel repository; ordine di
 > creazione dichiarato; i JSON dichiarati come template, non come risorse esistenti.
+>
+> **Perché avete tolto Aurora?**
+> Su indicazione del docente, per costo e semplicità. La reader di Aurora serviva solo al failover; RDS PostgreSQL
+> Multi-AZ, con una primaria attiva e una standby a riposo replicata in modo sincrono, dà la stessa alta disponibilità
+> spendendo meno. Utenti, `GRANT`, anonimizzazione e proxy non sono cambiati: è cambiato solo il motore che li ospita.
 >
 > **Perché il proxy se dite che non è necessario?**
 > Per robustezza: con molte invocazioni concorrenti le connessioni si moltiplicano, e il proxy ci dà anche

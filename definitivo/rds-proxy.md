@@ -1,11 +1,11 @@
 # RDS Proxy — `real-estate-prod-db-proxy`
 
-L'RDS Proxy è un *connection pooler* gestito tra le Lambda e Aurora: tiene poche connessioni stabili verso il database e
-ci smista le molte connessioni brevi delle Lambda. Le Lambda vi entrano con un **token IAM** su TLS; il proxy entra in
-Aurora con la **password** dell'utente PostgreSQL, letta da Secrets Manager con il proprio ruolo.
+L'RDS Proxy è un *connection pooler* gestito tra le Lambda e il database RDS for PostgreSQL: tiene poche connessioni stabili verso il database e
+ci smista le molte connessioni brevi delle Lambda. Le Lambda vi entrano con un **token IAM** su TLS; il proxy entra nel
+database con la **password** dell'utente PostgreSQL, letta da Secrets Manager con il proprio ruolo.
 
 ```text
-Lambda -- IAM + TLS --> RDS Proxy -- password + TLS --> Aurora PostgreSQL
+Lambda -- IAM + TLS --> RDS Proxy -- password + TLS --> RDS for PostgreSQL
                            |
                            +-- GetSecretValue --> Secrets Manager
 ```
@@ -16,14 +16,14 @@ Lambda -- IAM + TLS --> RDS Proxy -- password + TLS --> Aurora PostgreSQL
 | --- | --- | --- | --- |
 | Lambda → proxy | [Property](lambda-property.md), [Users](lambda-users.md), [Offers](lambda-offers.md), [Presigned](lambda-presigned.md), [Files](lambda-files.md) | PostgreSQL 5432, TLS, token IAM come password | `rds-db:connect` nell'execution role; `sg-rds-proxy` accetta da `sg-lambda-internal` |
 | Proxy → Secrets Manager | [secrets-manager.md](secrets-manager.md) | `GetSecretValue` (eventualmente tramite l'[endpoint](vpc-endpoints.md)) | ruolo del proxy |
-| Proxy → Aurora | [aurora.md](aurora.md) | PostgreSQL 5432, TLS, password dal secret | `sg-rds` accetta da `sg-rds-proxy`; utente PostgreSQL |
+| Proxy → database | [rds-postgres.md](rds-postgres.md) | PostgreSQL 5432, TLS, password dal secret | `sg-rds` accetta da `sg-rds-proxy`; utente PostgreSQL |
 
 ## Perché c'è
 
 Ogni istanza di una Lambda apre la propria connessione: con molte invocazioni concorrenti si esaurisce
 `max_connections` e il database va sotto stress. Il proxy assorbe le connessioni effimere e ne mantiene poche verso
-Aurora (*multiplexing*). In più ci dà l'autenticazione IAM (nessuna password nelle Lambda) e un failover percepito più
-breve, perché tiene aperte le connessioni dei client mentre si ricollega al nuovo writer.
+il database (*multiplexing*). In più ci dà l'autenticazione IAM (nessuna password nelle Lambda) e un failover percepito più
+breve, perché tiene aperte le connessioni dei client e le porta da sé sulla nuova primaria, senza aspettare il DNS.
 
 Non è strettamente necessario: il traffico del progetto non sarà così elevato da dover gestire una moltitudine di
 connessioni, ma per sicurezza abbiamo deciso di implementarlo (vedi [decisioni-e-punti-aperti.md](decisioni-e-punti-aperti.md)
@@ -31,7 +31,8 @@ per come motivarlo). Senza proxy, con poche Lambda e connessioni riusate fuori d
 
 ## Concetti
 
-- **Target group**: il cluster Aurora collegato.
+- **Target group**: l'istanza RDS collegata. Un proxy ha un solo target; con un'istanza Multi-AZ il proxy sa da sé
+  qual è la primaria.
 - **Autenticazione client → proxy**: password oppure IAM ("Require IAM authentication"). Noi: **IAM**.
 - **Autenticazione proxy → database**: credenziali in Secrets Manager, lette con il ruolo del proxy.
 - **Require TLS**: connessioni cifrate obbligatorie.
@@ -48,9 +49,9 @@ per come motivarlo). Senza proxy, con poche Lambda e connessioni riusate fuori d
 | Nome | `real-estate-prod-db-proxy` |
 | Subnet | `private_subnet_A`, `private_subnet_B` (multi-AZ) |
 | Security group | `sg-rds-proxy` |
-| Target | cluster `real-estate-prod-aurora` (l'endpoint di default va al writer) |
+| Target | istanza `real-estate-prod-db` (Multi-AZ; l'endpoint di default va sempre alla primaria) |
 | Autenticazione dei client | IAM richiesto, TLS richiesto ("Require TLS") |
-| Autenticazione verso Aurora | secret, uno per utente PostgreSQL |
+| Autenticazione verso il database | secret, uno per utente PostgreSQL |
 | Ruolo | `real-estate-prod-rds-proxy-secrets-role` |
 
 **Modalità scelta:** autenticazione del proxy basata su secret, con IAM richiesto ai client. **Non** si sceglie
@@ -65,7 +66,7 @@ per come motivarlo). Senza proxy, con poche Lambda e connessioni riusate fuori d
    token vale **15 minuti**; una connessione già aperta non si chiude a quella scadenza.
 3. Usa il token **come password** della connessione PostgreSQL, su TLS (`sslmode=require` o `verify-full` con il bundle
    CA di RDS).
-4. Il proxy verifica il token con IAM, poi usa le credenziali del secret per parlare con Aurora.
+4. Il proxy verifica il token con IAM, poi usa le credenziali del secret per parlare con il database.
 
 Ci sono quindi **due livelli di identità** (IAM per entrare nel proxy, l'utente PostgreSQL per entrare nel database) e
 **due ruoli** (quello della Lambda e quello del proxy):
@@ -75,7 +76,7 @@ Lambda    --(1: assume l'execution role, trust lambda.amazonaws.com)--> credenzi
 Lambda    --(2: token IAM firmato SigV4, rds-db:connect)--> RDS Proxy
 RDS Proxy --(3: assume real-estate-prod-rds-proxy-secrets-role, trust rds.amazonaws.com)--> credenziali temporanee
 RDS Proxy --(4: GetSecretValue)--> Secrets Manager -> username/password
-RDS Proxy --(5: password PostgreSQL)--> Aurora
+RDS Proxy --(5: password PostgreSQL)--> RDS for PostgreSQL
 ```
 
 ## IAM
@@ -122,8 +123,8 @@ File: [`iam/policies/rds-proxy-read-secrets.json`](iam/policies/rds-proxy-read-s
   si associano gli stessi secret alla configurazione del proxy. Si usano gli ARN **completi**, con il suffisso casuale
   generato da Secrets Manager (`-AbCdEf`).
 - Non include il secret dell'utente master.
-- Il ruolo non riceve permessi di modifica o cancellazione dei secret, di gestione del cluster o di amministrazione IAM.
-- Il ruolo del proxy **non** ha `rds-db:connect`: verso Aurora usa la password.
+- Il ruolo non riceve permessi di modifica o cancellazione dei secret, di gestione dell'istanza o di amministrazione IAM.
+- Il ruolo del proxy **non** ha `rds-db:connect`: verso il database usa la password.
 
 Solo con una chiave KMS del cliente per i secret si aggiunge anche questa policy (spiegata in [kms.md](kms.md)):
 `kms:Decrypt` sulla sola chiave e solo tramite Secrets Manager nella nostra regione.
@@ -171,7 +172,7 @@ File: [`iam/policies/lambda-connect-proxy.json`](iam/policies/lambda-connect-pro
 ```
 
 - Concede `rds-db:connect` per **una sola coppia** proxy/utente PostgreSQL.
-- `<PROXY_RESOURCE_ID>` è l'ID risorsa `prx-...`, non il nome o l'ARN ordinario del proxy e non l'ID del cluster.
+- `<PROXY_RESOURCE_ID>` è l'ID risorsa `prx-...`, non il nome o l'ARN ordinario del proxy e non l'identificativo dell'istanza.
 - `<DB_USER>` cambia per ogni execution role: le policy reali sono già scritte per ciascuna Lambda
   ([lambda.md](lambda.md#execution-role)). Il permesso si dà solo alle funzioni che usano davvero il database (non alla
   Mailer).
@@ -185,26 +186,26 @@ File: [`iam/policies/lambda-connect-proxy.json`](iam/policies/lambda-connect-pro
 | In entrata | 5432 da `sg-lambda-internal` |
 | In uscita | 5432 → `sg-rds`; 443 → `sg-endpoint-secrets-manager` |
 
-TLS obbligatorio dai client e verso Aurora. Il percorso applicativo non prevede accesso diretto Lambda → Aurora.
+TLS obbligatorio dai client e verso il database. Il percorso applicativo non prevede accesso diretto Lambda → database.
 
 ## Costi
 
-Si paga in base alla capacità (vCPU/ACU) del database a cui è collegato, anche a vuoto: insieme ad Aurora è la parte più
-costosa.
+Si paga in base alle vCPU dell'istanza a cui è collegato, anche a vuoto: insieme al database è la parte più costosa.
 
 ## Punti aperti
 
 - Se il proxy ha bisogno dell'endpoint di Secrets Manager si scopre solo creandolo ([vpc-endpoints.md](vpc-endpoints.md#punti-aperti)).
-- Per mandare letture alla reader servirebbe un endpoint di sola lettura del proxy ([aurora.md](aurora.md#punti-aperti)).
-- Da verificare in prova: una connessione e il comportamento durante il failover del writer.
+- Da verificare in prova: una connessione e il comportamento durante un failover forzato della primaria
+  ([rds-postgres.md](rds-postgres.md#punti-aperti)).
 
 ## Riferimenti
 
-- [Ruolo, trust e accesso ai secret del proxy](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/rds-proxy-iam-setup.html)
-- [Connessione al proxy e ARN IAM](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/rds-proxy-connecting.html)
-- [Prerequisiti di rete del proxy](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/rds-proxy-network-prereqs.html)
-- [Troubleshooting del proxy](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/rds-proxy.troubleshooting.html)
-- [Regioni di RDS Proxy](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Concepts.Aurora_Fea_Regions_DB-eng.Feature.RDS_Proxy.html)
+- [Ruolo, trust e accesso ai secret del proxy](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy-iam-setup.html)
+- [Connessione al proxy e ARN IAM](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy-connecting.html)
+- [Prerequisiti di rete del proxy](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy-network-prereqs.html)
+- [Troubleshooting del proxy](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy.troubleshooting.html)
+- [Regioni e versioni di RDS Proxy con RDS for PostgreSQL](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.RDS_Fea_Regions_DB-eng.Feature.RDSProxy.html)
+- [RDS Proxy durante il failover](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy.howitworks.html#rds-proxy-failover)
 
 ## All'orale
 
@@ -213,7 +214,7 @@ costosa.
 > HikariCP in Spring Boot, ma condiviso tra tutte le istanze e gestito da AWS (più simile a un PgBouncer).
 >
 > **Differenza tra autenticazione client → proxy e proxy → database?**
-> Le Lambda entrano con un token IAM di 15 minuti; il proxy entra in Aurora con la password del secret, che legge con il
+> Le Lambda entrano con un token IAM di 15 minuti; il proxy entra nel database con la password del secret, che legge con il
 > suo ruolo. Le Lambda non vedono mai la password.
 >
 > **A cosa serve il ruolo del proxy e perché la trust è verso `rds.amazonaws.com`?**

@@ -7,7 +7,7 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-SORGENTE = Path(__file__).resolve().parents[2] / "definitivo/diagrammi/real-estate-v3.drawio"
+SORGENTE = Path(__file__).resolve().parents[2] / "definitivo/diagrammi/real-estate-v4.drawio"
 
 # Contenitori che danno il contesto: restano visibili se contengono qualcosa del flusso.
 CONTENITORI = {"account", "global", "region", "a_front", "a_auth", "a_notif", "a_support", "vpc",
@@ -24,7 +24,7 @@ VISTE = {
     "database": {
         "l_files", "l_presigned", "l_property", "l_users", "l_offers",
         "role_files", "role_presigned", "role_property", "role_users", "role_offers",
-        "proxy", "proxy_role", "ep_sm", "secrets", "writer", "reader", "cluster", "e7", "e8a", "e8b", "e9a", "e9b",
+        "proxy", "proxy_role", "ep_sm", "secrets", "writer", "reader", "cluster", "e7", "e8a", "e8b", "e8c", "e9a", "e9b",
     },
     "file": {
         "user", "apigw", "s3_files", "cf_files", "l_presigned", "l_files", "l_property",
@@ -41,7 +41,7 @@ VISTE = {
     },
     "rete": {
         "l_files", "l_presigned", "l_property", "l_users", "l_offers", "proxy", "ep_sm", "ep_sns", "ep_s3",
-        "ep_s3_note", "vpc_note", "writer", "reader", "cluster", "e7", "e8a", "e8b", "e9a", "e10a", "e16a", "e21",
+        "ep_s3_note", "vpc_note", "writer", "reader", "cluster", "e7", "e8a", "e8b", "e8c", "e9a", "e10a", "e16a", "e21",
     },
     "notifiche": {
         "user", "cognito", "l_property", "l_users", "l_offers", "role_property", "role_users", "role_offers",

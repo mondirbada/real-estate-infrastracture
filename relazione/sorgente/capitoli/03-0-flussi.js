@@ -12,7 +12,7 @@ module.exports = ({ S }) => {
     [
       ["3.1", "Scaricare l'applicazione", "CloudFront legge il bucket privato del sito con OAC"],
       ["3.2", "Login e chiamate all'API", "Cognito emette i token, l'authorizer JWT controlla l'access token"],
-      ["3.3", "Dalla Lambda al database", "RDS Proxy con autenticazione IAM verso Aurora"],
+      ["3.3", "Dalla Lambda al database", "RDS Proxy con autenticazione IAM verso RDS PostgreSQL"],
       ["3.4", "Caricare e servire i file", "presigned POST verso S3, lettura tramite CloudFront"],
       ["3.5", "Le notifiche email", "SNS, SQS, Mailer e SES, con la dead-letter queue"],
       ["3.6", "Gestione e cancellazione dell'account", "la SPA con Cognito, i dati anonimizzati"],

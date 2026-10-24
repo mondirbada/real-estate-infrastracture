@@ -8,7 +8,7 @@ resource policy del progetto; ogni JSON è mostrato e spiegato nel file del serv
 
 - Ruoli delle Lambda: [lambda.md](lambda.md) e i file delle sei Lambda.
 - Ruolo del proxy e accesso al DB: [rds-proxy.md](rds-proxy.md), [secrets-manager.md](secrets-manager.md), [kms.md](kms.md).
-- Ruolo di servizio di Aurora: [aurora.md](aurora.md).
+- Ruolo di servizio di RDS: [rds-postgres.md](rds-postgres.md#iam).
 - Resource policy: [api-gateway.md](api-gateway.md), [s3.md](s3.md), [cloudfront.md](cloudfront.md),
   [lambda-files.md](lambda-files.md), [sqs.md](sqs.md), [vpc-endpoints.md](vpc-endpoints.md).
 - Autorizzazione degli utenti finali (non IAM): [cognito.md](cognito.md), [api-gateway.md](api-gateway.md).
@@ -123,7 +123,7 @@ Convenzione: `real-estate-<ambiente>-<componente>-<scopo>`. "log" = `AWSLambdaBa
 | `real-estate-prod-lambda-files-role` | `lambda.amazonaws.com` | log, VPC, [`lambda-files.json`](iam/policies/lambda-files.json): `rds-db:connect` come `files_user`, `s3:DeleteObject` su `uploads/*` | [lambda-files.md](lambda-files.md) |
 | `real-estate-prod-lambda-mailer-role` | `lambda.amazonaws.com` | log, [`lambda-mailer.json`](iam/policies/lambda-mailer.json): lettura della coda, `cognito-idp:AdminGetUser` sul solo user pool, `ses:SendEmail` con `ses:FromAddress` | [lambda-mailer.md](lambda-mailer.md) |
 | `real-estate-prod-rds-proxy-secrets-role` | `rds.amazonaws.com` | [`rds-proxy-read-secrets.json`](iam/policies/rds-proxy-read-secrets.json) (+ [`rds-proxy-decrypt-secrets.json`](iam/policies/rds-proxy-decrypt-secrets.json) solo con una CMK) | [rds-proxy.md](rds-proxy.md) |
-| `AWSServiceRoleForRDS` (service-linked) | servizio RDS, gestita da AWS | `AmazonRDSServiceRolePolicy` | [aurora.md](aurora.md) |
+| `AWSServiceRoleForRDS` (service-linked) | servizio RDS, gestita da AWS | `AmazonRDSServiceRolePolicy` | [rds-postgres.md](rds-postgres.md#iam) |
 
 Oltre ai ruoli dei servizi c'è una policy per le **persone del team**:
 [`ops-dlq-redrive.json`](iam/policies/ops-dlq-redrive.json), da attaccare al ruolo o all'utente di chi gestisce la DLQ
@@ -162,7 +162,7 @@ per ammettere il ruolo del proxy o `sns.amazonaws.com` ([kms.md](kms.md)).
 | Lambda → CloudWatch Logs | Li invia il servizio Lambda con i permessi `logs:*` del ruolo, senza passare dalla rete della funzione |
 | Secrets Manager | Il secret non assume ruoli; lo legge il ruolo del proxy |
 | Topic SNS | La policy di default permette di pubblicare alle identità del nostro account; il filtro vero lo fanno le identity policy delle Lambda |
-| Aurora | Usa il service-linked role gestito da AWS |
+| RDS for PostgreSQL | Usa il service-linked role gestito da AWS |
 
 ## Autorizzazione degli utenti finali e dei servizi
 
@@ -179,7 +179,7 @@ JWT e l'ownership, poi firma un presigned POST con i permessi del proprio ruolo.
 
 ## Identità di deploy e `iam:PassRole`
 
-I permessi di provisioning (creare ruoli, proxy, cluster, secret, `iam:PassRole`) appartengono all'identità di deploy
+I permessi di provisioning (creare ruoli, proxy, istanza RDS, secret, `iam:PassRole`) appartengono all'identità di deploy
 (un utente o ruolo del team), non ai ruoli applicativi. La parte delicata è il `PassRole`:
 
 File: [`iam/policies/deploy-pass-role.json`](iam/policies/deploy-pass-role.json)
@@ -217,8 +217,8 @@ File: [`iam/policies/deploy-pass-role.json`](iam/policies/deploy-pass-role.json)
 - Ogni Lambda si collega al proxy solo con il proprio utente PostgreSQL.
 - Il proxy legge solo i secret associati; le Lambda non possono leggerli.
 - I `GRANT` PostgreSQL consentono solo le operazioni previste per ciascun ambito.
-- Security group: Lambda → proxy e proxy → Aurora su TCP 5432; nessun accesso diretto Lambda → Aurora.
-- Una connessione di prova e il comportamento durante il failover del writer.
+- Security group: Lambda → proxy e proxy → database su TCP 5432; nessun accesso diretto Lambda → database.
+- Una connessione di prova e il comportamento durante un failover forzato della primaria (*Reboot with failover*).
 - Strumenti utili: IAM Policy Simulator (per simulare `rds-db:connect` o `secretsmanager:GetSecretValue`), IAM Access
   Analyzer, credential report, CloudTrail (si vede la chiamata `AssumeRole` di ogni ruolo).
 
@@ -268,6 +268,7 @@ Su un account di prova, con AWS Budgets attivo:
 | [`config/cloudwatch-metric-filter-mailer-permanent-failures.json`](config/cloudwatch-metric-filter-mailer-permanent-failures.json) | configurazione | [cloudwatch.md](cloudwatch.md) |
 | [`config/cognito-user-pool.json`](config/cognito-user-pool.json) | configurazione | [cognito.md](cognito.md) |
 | [`config/cognito-app-client.json`](config/cognito-app-client.json) | configurazione | [cognito.md](cognito.md) |
+| [`config/rds-event-subscription-db.json`](config/rds-event-subscription-db.json) | configurazione | [cloudwatch.md](cloudwatch.md) |
 
 ## All'orale
 

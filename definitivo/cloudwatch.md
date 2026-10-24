@@ -9,7 +9,8 @@ minimi del progetto. Gli allarmi avvisano il team con un'email, tramite il topic
 | --- | --- | --- |
 | Tutte le [Lambda](lambda.md) → CloudWatch | log (log group `/aws/lambda/<nome>`), metriche (invocazioni, errori, durata, throttles) | permessi `logs:*` di `AWSLambdaBasicExecutionRole` |
 | [API Gateway](api-gateway.md) → CloudWatch | access log dello stage | log group indicato nello stage |
-| [Aurora](aurora.md) → CloudWatch | metriche CPU e connessioni | automatiche |
+| [RDS for PostgreSQL](rds-postgres.md) → CloudWatch | metriche `CPUUtilization`, `DatabaseConnections`, `FreeStorageSpace` | automatiche |
+| RDS → SNS | eventi dell'istanza (failover, guasti) verso `real-estate-prod-ops-alerts` | event subscription di RDS |
 | [SQS](sqs.md) → CloudWatch | metriche della coda e della DLQ (`ApproximateNumberOfMessagesVisible`, `ApproximateAgeOfOldestMessage`) | automatiche |
 | CloudWatch → SNS | allarmi verso il topic `real-estate-prod-ops-alerts` | azione dell'allarme |
 | SNS → team | email | sottoscrizione email del topic, confermata da chi la riceve |
@@ -33,8 +34,8 @@ minimi del progetto. Gli allarmi avvisano il team con un'email, tramite il topic
 | Messaggi vecchi in coda | `ApproximateAgeOfOldestMessage` di `real-estate-prod-notifications-queue` | > 900 s, periodo 5 min | i messaggi si accumulano: la Mailer è ferma o in throttling |
 | Errori permanenti della Mailer | metric filter `MailerPermanentFailures` sui log della Mailer | somma > 0, periodo 5 min | email scartate senza ritentare (messaggio malformato, email non verificata, `MessageRejected`): non arrivano nella DLQ |
 | Errori delle Lambda | `Errors` di ciascuna funzione | > 0 | |
-| CPU di Aurora | `CPUUtilization` | soglia da fissare | |
-| Connessioni di Aurora | connessioni al database | soglia da fissare | |
+| CPU del database | `CPUUtilization` di `real-estate-prod-db` (namespace `AWS/RDS`) | soglia da fissare | |
+| Connessioni del database | `DatabaseConnections` di `real-estate-prod-db` | soglia da fissare | |
 | Pulizia dei file non riuscita | metric filter sul log group della Property Lambda per `FILES_CLEANUP_FAILED` > 0 | | [lambda-property.md](lambda-property.md#cancellazione-di-un-immobile) |
 
 Tutti gli allarmi hanno come azione il topic `real-estate-prod-ops-alerts`. Quello della DLQ manda anche il ritorno a
@@ -100,6 +101,30 @@ File: [`config/cloudwatch-metric-filter-mailer-permanent-failures.json`](config/
 }
 ```
 
+### Eventi di RDS: failover e guasti
+
+Un failover non è una metrica ma un **evento** di RDS: lo si riceve con una *event subscription* di RDS che pubblica sul
+topic del team. Gli eventi utili dell'istanza `real-estate-prod-db` sono nella categoria `failover`
+(`RDS-EVENT-0013` failover iniziato, `RDS-EVENT-0015` e `RDS-EVENT-0049` failover completato) e nella categoria
+`failure` ([rds-postgres.md](rds-postgres.md#concetti)).
+
+File: [`config/rds-event-subscription-db.json`](config/rds-event-subscription-db.json) (parametri di `CreateEventSubscription`)
+
+```json
+{
+  "SubscriptionName": "real-estate-prod-db-events",
+  "SnsTopicArn": "arn:aws:sns:eu-south-1:<ACCOUNT_ID>:real-estate-prod-ops-alerts",
+  "SourceType": "db-instance",
+  "SourceIds": ["real-estate-prod-db"],
+  "EventCategories": ["failover", "failure"],
+  "Enabled": true
+}
+```
+
+- Solo l'istanza del progetto e solo le due categorie che chiedono di guardare: niente email per backup e manutenzioni.
+- Dopo un failover l'applicazione dovrebbe già funzionare (il proxy si è ricollegato); l'email serve a sapere che è
+  successo, a controllare gli errori delle Lambda in quei minuti e a sapere che la primaria ora sta nell'altra AZ.
+
 ### Topic `real-estate-prod-ops-alerts`
 
 | Voce | Valore |
@@ -122,6 +147,9 @@ pubblicatore (CloudWatch, non le Lambda).
   scrive, per esempio per un topic in un altro account, AWS raccomanda di ammettere `cloudwatch.amazonaws.com` con
   `aws:SourceArn` (gli allarmi del nostro account) e `aws:SourceAccount`, contro il *confused deputy*. Con un topic
   cifrato da una chiave del cliente servirebbe anche la key policy che ammetta CloudWatch.
+- **Eventi RDS → topic SNS**: nessun ruolo. Per default un topic ammette a pubblicare le risorse RDS dello stesso
+  account; una topic policy servirebbe solo per restringere o per un altro account, con principal
+  `events.rds.amazonaws.com`, `aws:SourceArn` (l'istanza) e `aws:SourceAccount`.
 - **Operatore → log della Mailer**: `logs:FilterLogEvents` nella policy [`ops-dlq-redrive.json`](iam/policies/ops-dlq-redrive.json),
   per la procedura sulla DLQ ([sqs.md](sqs.md#chi-fa-il-redrive-loperatore)).
 
@@ -142,12 +170,18 @@ verso il team rientrano nel livello gratuito.
 - [Log delle HTTP API](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-logging.html)
 - [Notifiche SNS degli allarmi e confused deputy](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/Notify_Users_Alarm_Changes.html)
 - [Allarmi per le DLQ di SQS](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/dead-letter-queues-alarms-cloudwatch.html)
+- [Categorie ed eventi di RDS (failover)](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.Messages.html)
+- [Permessi di RDS per pubblicare su un topic SNS](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_Events.GrantingPermissions.html)
 
 ## All'orale
 
 > **Come monitorate che il sistema funziona?**
 > Log di tutte le Lambda e dell'API, allarmi su errori delle Lambda, DLQ non vuota, messaggi vecchi in coda, errori
-> permanenti della Mailer, CPU e connessioni di Aurora. È l'equivalente di Actuator più un sistema di log centralizzato.
+> permanenti della Mailer, CPU e connessioni del database, eventi di failover di RDS. È l'equivalente di Actuator più un sistema di log centralizzato.
+>
+> **Come sapete che c'è stato un failover del database?**
+> Con una event subscription di RDS sulle categorie `failover` e `failure` dell'istanza, che pubblica sullo stesso
+> topic degli allarmi. Il failover è un evento, non una metrica.
 >
 > **Chi riceve gli allarmi?**
 > Il team, per email: gli allarmi pubblicano sul topic SNS `real-estate-prod-ops-alerts`, che ha una sottoscrizione

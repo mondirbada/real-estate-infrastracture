@@ -14,12 +14,13 @@ La documentazione descrive la configurazione prevista: non attesta risorse già 
 
 ## Diagramma
 
-![Diagramma dell'infrastruttura](diagrammi/real-estate-v3.png)
+![Diagramma dell'infrastruttura](diagrammi/real-estate-v4.png)
 
-Sorgente modificabile con draw.io: [`diagrammi/real-estate-v3.drawio`](diagrammi/real-estate-v3.drawio). La versione
-precedente, [`real-estate-v2.drawio`](diagrammi/real-estate-v2.drawio), resta per confronto: la v3 aggiunge l'access
-token verso l'API, la Mailer che chiede l'email a Cognito (`AdminGetUser`) e il ciclo completo della DLQ (5 ricezioni,
-allarme, topic `real-estate-prod-ops-alerts`, redrive manuale).
+Sorgente modificabile con draw.io: [`diagrammi/real-estate-v4.drawio`](diagrammi/real-estate-v4.drawio). La versione
+precedente, [`real-estate-v3.drawio`](diagrammi/real-estate-v3.drawio), resta per confronto: la v4 sostituisce il
+cluster Aurora con RDS for PostgreSQL Multi-AZ (primaria in AZ-1, standby in AZ-2). La v3 aveva aggiunto alla v2
+l'access token verso l'API, la Mailer che chiede l'email a Cognito (`AdminGetUser`) e il ciclo completo della DLQ (5
+ricezioni, allarme, topic `real-estate-prod-ops-alerts`, redrive manuale).
 Legenda del diagramma: freccia piena = richiesta o dati; freccia tratteggiata = controllo, asincrono o "da verificare";
 frecce blu numerate 1-5 = ordine del percorso dell'utente (1 scarica la SPA, 2 login e gestione account, 3 chiamate API
 con l'access token, 4 upload con presigned POST, 5 lettura dei file pubblici); riquadro verde tratteggiato = security
@@ -48,7 +49,7 @@ nome completo.
 | [lambda-mailer.md](lambda-mailer.md) | Mailer Lambda: email del destinatario da Cognito, invio con SES, batch parziali, errori temporanei e permanenti, fuori dalla VPC |
 | [vpc.md](vpc.md) | VPC, subnet, route table, security group (tabella SG → SG) |
 | [vpc-endpoints.md](vpc-endpoints.md) | Endpoint SNS, Secrets Manager e S3, Private DNS, endpoint policy |
-| [aurora.md](aurora.md) | Cluster Aurora PostgreSQL, writer e reader, utenti PostgreSQL, dati personali (niente email) |
+| [rds-postgres.md](rds-postgres.md) | RDS for PostgreSQL Multi-AZ: primaria e standby, failover, backup, utenti PostgreSQL, dati personali (niente email) |
 | [rds-proxy.md](rds-proxy.md) | RDS Proxy: pooling, autenticazione IAM delle Lambda, ruolo del proxy |
 | [secrets-manager.md](secrets-manager.md) | Secret degli utenti PostgreSQL, letti solo dal proxy |
 | [kms.md](kms.md) | Chiavi di cifratura usate dai servizi, perché SSE-SQS |
@@ -63,7 +64,7 @@ JSON (ognuno è mostrato e spiegato nel file del servizio che lo usa; l'elenco c
 - `iam/policies/`: identity policy dei ruoli, la policy di deploy e quella dell'operatore per il redrive della DLQ.
 - `iam/resource-policies/`: policy attaccate alle risorse (Lambda, bucket, coda, endpoint).
 - `config/`: configurazioni non IAM (CORS, coda, DLQ, sottoscrizione, notifica S3, presigned POST, user pool e app
-  client di Cognito, event source mapping della Mailer, allarme della DLQ, metric filter).
+  client di Cognito, event source mapping della Mailer, allarme della DLQ, metric filter, event subscription di RDS).
 
 ## Ordine di studio consigliato
 
@@ -72,7 +73,7 @@ JSON (ognuno è mostrato e spiegato nel file del servizio che lo usa; l'elenco c
    group e altri no.
 3. Il percorso di una richiesta: [cloudfront.md](cloudfront.md), [s3.md](s3.md), [cognito.md](cognito.md),
    [api-gateway.md](api-gateway.md), [lambda.md](lambda.md) e le sei Lambda.
-4. I dati: [rds-proxy.md](rds-proxy.md), [aurora.md](aurora.md), [secrets-manager.md](secrets-manager.md), [kms.md](kms.md).
+4. I dati: [rds-proxy.md](rds-proxy.md), [rds-postgres.md](rds-postgres.md), [secrets-manager.md](secrets-manager.md), [kms.md](kms.md).
 5. Le notifiche: [sns.md](sns.md), [sqs.md](sqs.md), [ses.md](ses.md); poi [cloudwatch.md](cloudwatch.md).
 6. [iam.md](iam.md) per ultimo e con calma: è la parte su cui il professore insiste. Ripassalo rifacendo ogni freccia
    del diagramma con la domanda "chi può fare cosa su quale risorsa, e perché?".
@@ -84,6 +85,7 @@ JSON (ognuno è mostrato e spiegato nel file del servizio che lo usa; l'elenco c
 | --- | --- |
 | Regione / AZ | Area geografica (`eu-south-1` = Milano) / data center isolato dentro la regione. Due AZ = si sopravvive alla caduta di una |
 | VPC, subnet | Rete privata isolata (`10.0.0.0/16`) / porzione della VPC legata a una sola AZ |
+| Multi-AZ (RDS) | Deployment di RDS con una **primaria** attiva e una **standby** a riposo in un'altra AZ, replicata in modo sincrono; la standby non serve letture e subentra con il failover automatico |
 | ENI | Scheda di rete virtuale dentro una subnet; i security group si attaccano alle ENI |
 | Security group (SG) | Firewall *stateful* di una ENI, solo regole *allow* |
 | Endpoint VPC | Accesso privato a un servizio AWS dalla VPC: *interface* (ENI, a pagamento) o *gateway* (rotta, gratuito, solo S3 e DynamoDB) |

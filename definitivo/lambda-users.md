@@ -10,7 +10,7 @@ non lo tocca: lo gestisce il frontend. Sta nella VPC perché usa il database.
 | Direzione | Con chi | Come |
 | --- | --- | --- |
 | Invocata da | [API Gateway](api-gateway.md) | route `/users`, invocazione sincrona |
-| Chiama | [RDS Proxy](rds-proxy.md) → [Aurora](aurora.md) | PostgreSQL 5432, TLS, token IAM come `users_user` |
+| Chiama | [RDS Proxy](rds-proxy.md) → [RDS for PostgreSQL](rds-postgres.md) | PostgreSQL 5432, TLS, token IAM come `users_user` |
 | Chiama | [SNS](sns.md) | `sns:Publish` tramite l'[interface endpoint SNS](vpc-endpoints.md) (per esempio il benvenuto) |
 | **Non** chiama | [Cognito](cognito.md) | le operazioni sull'account le fa la SPA |
 | Scrive i log in | [CloudWatch](cloudwatch.md) | log group `/aws/lambda/real-estate-prod-users` |
@@ -34,7 +34,7 @@ anonimizzato: se l'utente rientra, `PUT /users/me` risponde 410 e la SPA riprova
 
 **L'email non passa da qui.** L'API riceve l'access token, che non contiene l'email
 ([cognito.md](cognito.md#decisione-allapi-va-laccess-token)), e la tabella `users` non ha la colonna email
-([aurora.md](aurora.md#dati-personali-niente-email-nel-database)). L'evento di benvenuto porta solo `recipientSub`:
+([rds-postgres.md](rds-postgres.md#dati-personali-niente-email-nel-database)). L'evento di benvenuto porta solo `recipientSub`:
 l'indirizzo lo legge la Mailer da Cognito al momento dell'invio ([lambda-mailer.md](lambda-mailer.md#da-dove-arriva-lemail)).
 
 ## Cancellazione dell'account: anonimizzazione
@@ -91,11 +91,11 @@ ancora pubblici, o il contrario. Ripetere la chiamata è innocuo: `COALESCE` tie
 le altre due `UPDATE` non trovano più righe da cambiare.
 
 **Perché il `sub` da solo non è un dato riconducibile a una persona.** Il database non ha mai avuto l'email
-([aurora.md](aurora.md#dati-personali-niente-email-nel-database)): l'unico legame tra il `sub` e una persona sta in
+([rds-postgres.md](rds-postgres.md#dati-personali-niente-email-nel-database)): l'unico legame tra il `sub` e una persona sta in
 Cognito. Dopo `DeleteUser` quel legame sparisce, e il `sub` rimasto è uno pseudonimo che non punta più a nessuno. È
 la minimizzazione già scelta per l'email che rende possibile anonimizzare cambiando poche colonne.
-Un limite da dire: i backup automatici del cluster contengono ancora il profilo com'era fino alla fine della retention
-(da 1 a 35 giorni, valore ancora da fissare: [aurora.md](aurora.md#punti-aperti)).
+Un limite da dire: i backup automatici dell'istanza contengono ancora il profilo com'era fino alla fine della retention
+(7 giorni: [rds-postgres.md](rds-postgres.md#configurazione)).
 
 **Notifiche delle offerte ritirate.** Dopo il `COMMIT`, per ogni offerta restituita da `RETURNING` la Lambda pubblica
 sul topic un evento `OFFER_WITHDRAWN` verso **l'altra parte**: il proprietario dell'immobile se l'offerta era
@@ -112,7 +112,7 @@ Property Lambda ([lambda-property.md](lambda-property.md#cancellazione-di-un-imm
 dall'`admin` sugli immobili ritirati: è tra gli sviluppi possibili.
 
 **Permessi nel database.** La Users Lambda ora aggiorna anche lo stato di `properties` e `offers`: lo permettono i
-`GRANT` di `users_user`, solo sulle colonne `status` ([aurora.md](aurora.md#utenti-postgresql)). **Nessun cambio IAM**:
+`GRANT` di `users_user`, solo sulle colonne `status` ([rds-postgres.md](rds-postgres.md#utenti-postgresql)). **Nessun cambio IAM**:
 IAM decide chi entra nel proxy e con quale utente, i `GRANT` cosa quell'utente fa sulle tabelle.
 
 **Il token ancora valido dopo la cancellazione.** Un access token emesso prima di `DeleteUser` vale fino a 60 minuti e

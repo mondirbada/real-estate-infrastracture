@@ -1,6 +1,6 @@
 #!/bin/bash
 # Rigenera le viste parziali: vista.py sbiadisce ciò che non è nel flusso, render.js (Playwright + viewer di draw.io)
-# disegna la v3 a scala 2, ImageMagick ritaglia secondo ritagli.txt (coordinate sul PNG largo 2000 px).
+# disegna la v4 a scala 2, ImageMagick ritaglia secondo ritagli.txt (coordinate sul PNG largo 2000 px).
 # Uso: RENDER=/percorso/render.js ./rigenera.sh [vista...]
 set -e
 cd "$(dirname "$0")"

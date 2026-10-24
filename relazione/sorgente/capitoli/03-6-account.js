@@ -24,7 +24,7 @@ module.exports = ({ S, leggiJson, DIAGRAMMI }) => {
     [
       ["SPA → Cognito", "`UpdateUserAttributes`, `ChangePassword`, `DeleteUser`", "access token con scope `aws.cognito.signin.user.admin`; nessun permesso IAM"],
       ["SPA → HTTP API → Users Lambda", "`DELETE /users/me`", "authorizer JWT e resource policy (3.2)"],
-      ["Users Lambda → RDS Proxy → Aurora", "una transazione", "`rds-db:connect` come `users_user`; `GRANT`"],
+      ["Users Lambda → RDS Proxy → database", "una transazione", "`rds-db:connect` come `users_user`; `GRANT`"],
       ["Users Lambda → SNS", "evento `OFFER_WITHDRAWN`", "`sns:Publish` sul topic (3.5)"],
     ],
     [3000, 3000, 3600],

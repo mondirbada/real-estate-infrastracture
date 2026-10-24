@@ -95,7 +95,7 @@ export async function requireActiveUser(db, user) {
   letture, che sono pubbliche o dell'utente stesso.
 - **Il costo.** Una query in più per ogni richiesta che scrive, sulla chiave primaria di `users`. Le letture non la
   pagano. Ogni utente PostgreSQL ha per questo `SELECT (sub, deleted_at)` su `users`
-  ([aurora.md](aurora.md#utenti-postgresql)).
+  ([rds-postgres.md](rds-postgres.md#utenti-postgresql)).
 - **Una riga mancante non è un account cancellato**: con l'anonimizzazione le righe non si tolgono mai, quindi manca
   solo per chi non ha ancora fatto `PUT /users/me`.
 

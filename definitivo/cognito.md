@@ -155,7 +155,7 @@ confronta con `client_id` ([api-gateway.md](api-gateway.md#authorizer-jwt)).
   validati, mai dal body.
 - **L'email non serve all'API.** Serviva solo per le notifiche, e ora la legge la Mailer da Cognito al momento
   dell'invio ([lambda-mailer.md](lambda-mailer.md#da-dove-arriva-lemail)): gli eventi portano `recipientSub` e il
-  database non ha più la colonna email ([aurora.md](aurora.md#dati-personali-niente-email-nel-database)).
+  database non ha più la colonna email ([rds-postgres.md](rds-postgres.md#dati-personali-niente-email-nel-database)).
 
 Vantaggi:
 

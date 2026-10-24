@@ -10,7 +10,7 @@ cancellazione di un file). Sta nella VPC perché usa il database.
 | --- | --- | --- |
 | Invocata da | [S3](s3.md), bucket dei file | notifica `ObjectCreated` sul prefisso `uploads/`, invocazione asincrona |
 | Invocata da | [API Gateway](api-gateway.md) | `GET /properties/{id}/files`, `DELETE /files/{id}` |
-| Chiama | [RDS Proxy](rds-proxy.md) → [Aurora](aurora.md) | PostgreSQL 5432, TLS, token IAM come `files_user` |
+| Chiama | [RDS Proxy](rds-proxy.md) → [RDS for PostgreSQL](rds-postgres.md) | PostgreSQL 5432, TLS, token IAM come `files_user` |
 | Chiama | [S3](s3.md) | `DeleteObject` tramite il [gateway endpoint S3](vpc-endpoints.md) |
 | Scrive i log in | [CloudWatch](cloudwatch.md) | log group `/aws/lambda/real-estate-prod-files` |
 

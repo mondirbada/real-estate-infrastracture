@@ -1,0 +1,8 @@
+{
+  "SubscriptionName": "real-estate-prod-db-events",
+  "SnsTopicArn": "arn:aws:sns:eu-south-1:<ACCOUNT_ID>:real-estate-prod-ops-alerts",
+  "SourceType": "db-instance",
+  "SourceIds": ["real-estate-prod-db"],
+  "EventCategories": ["failover", "failure"],
+  "Enabled": true
+}

@@ -8,7 +8,7 @@ sulla coda e la policy facoltativa del proxy per una chiave del cliente.
 
 | Servizio | Cifratura a riposo | File |
 | --- | --- | --- |
-| Aurora | KMS, chiave `aws/rds` (va scelta alla creazione del cluster) | [aurora.md](aurora.md) |
+| RDS for PostgreSQL | KMS, chiave `aws/rds` (va scelta alla creazione dell'istanza; cifra anche standby, backup e snapshot) | [rds-postgres.md](rds-postgres.md) |
 | Secrets Manager | KMS, chiave `aws/secretsmanager` | [secrets-manager.md](secrets-manager.md) |
 | S3 (entrambi i bucket) | SSE-S3 | [s3.md](s3.md) |
 | SQS (coda e DLQ) | SSE-SQS (`SqsManagedSseEnabled`) | [sqs.md](sqs.md) |
@@ -60,7 +60,7 @@ File: [`iam/policies/rds-proxy-decrypt-secrets.json`](iam/policies/rds-proxy-dec
 - `kms:Decrypt` solo sulla chiave indicata.
 - Condizione `kms:ViaService = secretsmanager.eu-south-1.amazonaws.com`: il ruolo può decifrare **solo** tramite Secrets
   Manager nella nostra regione, non usare la chiave per altro.
-- Non riguarda la chiave di cifratura dello storage Aurora, che è una risorsa separata.
+- Non riguarda la chiave di cifratura dello storage dell'istanza RDS, che è una risorsa separata.
 
 ## IAM
 
